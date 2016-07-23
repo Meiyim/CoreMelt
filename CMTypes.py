@@ -23,7 +23,7 @@ class RodUnit(object):
     def __init__(self, _id, nh, nr, pos, add):
         self.index = _id
         assert isinstance(pos, tuple)
-        self.position = np.array(pos)
+        self.position = np.array(pos,dtype=np.float64)
         self.address = add
         self.T = np.zeros((nh, nr))
         self.bT = np.zeros(nh)

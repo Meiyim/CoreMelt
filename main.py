@@ -15,90 +15,105 @@ def build_rod_units(nr, nz, filename):
             ret += 1
 
     rods = []
-    pattern = re.compile(r'\S*')
+    pattern = re.compile(r'\S+')
     for line in open(filename, 'r'):
         _list = pattern.findall(line)
         _gen = id_generator()
         # should check?
-        newRod = Types.RodUnit(_gen.next(), nr, nz, (_list[0], _list[1]), (_list[2], _list[3], _list[4]))
+        newRod = Types.RodUnit(_gen.next(), nr, nz, (float(_list[0]), float(_list[1])), (int(_list[2]), int(_list[3]), int(_list[4])))
         rods.append(newRod)
 
+
     # config rod status
-    fuelAssemblyList = []
-    grayAssemblyList = []
-    blackAssemblyList = []
+    grayAssemblyList = [4,20,31,33]
+    blackAssemblyList = [2,5,9,11,13,16,18,22,25,27,29,35,40,42,45,47]
     center = [(9, 9)]
-    specialPosi = [(1, 1), (2, 2)]
+    specialPosi = [(3, 6), (3, 9),(3,12),(4,4),(4,14),(6,3),(6,6),(6,9),
+                   (6,12),(6,15),(9,3),(9,6),(9,12),(9,15),
+                   (12,3),(12,6),(12,9),(12,12),(12,15),
+                   (14,4),(14,14),(15,6),(15,9),(15,12),
+                   ]
     for rod in rods:
         iAss = rod.address[2]
         iRowCol = (rod.address[0], rod.address[1])
-        if iAss in fuelAssemblyList:
+        if iAss in grayAssemblyList:
             if iRowCol in center:
-                rod.status = Types.RodType.empty
+                rod.type = Types.RodType.empty
             elif iRowCol in specialPosi:
-                rod.status = Types.RodType.empty
+                rod.type = Types.RodType.gray
             else:
-                rod.status = Types.RodType.fuel
-        elif iAss in grayAssemblyList
+                rod.type = Types.RodType.fuel
+        elif iAss in blackAssemblyList:
             if iRowCol in center:
-                rod.status = Types.RodType.empty
+                rod.type = Types.RodType.empty
             elif iRowCol in specialPosi:
-                rod.status = Types.RodType.gray
+                rod.type = Types.RodType.black
             else:
-                rod.status = Types.RodType.fuel
-        elif iAss in blackAssemblyList
-            if iRowCol in center:
-                rod.status = Types.RodType.empty
-            elif iRowCol in specialPosi:
-                rod.status = Types.RodType.black
-            else:
-                rod.status = Types.RodType.fuel
+                rod.type = Types.RodType.fuel
         else:
-            assert False
+            if iRowCol in center:
+                rod.type = Types.RodType.empty
+            elif iRowCol in specialPosi:
+                rod.type = Types.RodType.empty
+            else:
+                rod.type = Types.RodType.fuel
 
     # config neighbour
     rodMap = {}
     for rod in rods:
+        assert rodMap.get(rod.address) is None
         rodMap[rod.address] = rod
+    print len(rods)
 
     def findRod(add, myPosi):
         # type: (tuple, np.array) -> Types.RodUnit
         add = list(add)
-        assert isinstance(myPosi, np.array)
-        CRITICAL = 10.
-        ID_END = 17
-        ID_BEG = 1
-        neighbourRod = rodMap.get(add)
+        assert isinstance(myPosi, np.ndarray)
+        CRITICAL = 0.2**2 #assembly length 0.214
+        MAX_COLROW = 17
+        MAX_ASSEMBLY =52
+        neighbourRod = rodMap.get(tuple(add))
         if neighbourRod is not None:
             # rod in the same assembly
             pass
         else:
-            if add[0] == ID_BEG:
-                add[0] = ID_END
-            if add[1] == ID_BEG:
-                add[1] = ID_END
-            if add[0] == ID_END:
-                add[0] = ID_BEG
-            if add[1] == ID_END:
-                add[1] = ID_BEG
-            dis = []
-            for iAss in range(ID_BEG, ID_END + 1):
-                add[2] = iAss
-                thisrod = neighbourRod.get(add)
-                assert thisrod is not None
-                distance = np.sum((thisrod.position - myPosi) ** 2)
-                dis.append(distance)
+            on_bound = False
+            icol = add[0]
+            icol = (icol-1) % MAX_COLROW + 1
+            irow = add[1]
+            irow = (irow-1) % MAX_COLROW + 1
+            if icol != add[0]:
+                on_bound = True
+                add[0] = icol
+            if irow != add[1]:
+                on_bound = True
+                add[1] = irow
 
-            _min = min(dis)
-            if _min < CRITICAL:
-                iAss = dis.index(_min)
-                add[2] = iAss
-                assert rodMap.get(tuple(add)) is not None
-                neighbourRod =  rodMap[tuple(add)]
+            if on_bound :
+                dis = {}
+                for iAss in range(1, MAX_ASSEMBLY + 1):
+                    add[2] = iAss
+                    thisrod = rodMap.get(tuple(add))
+                    if thisrod is None:
+                        continue
+                    distance = np.sum((thisrod.position - myPosi) ** 2)
+                    dis[iAss] = distance
 
-        if neighbourRod.type is Types.RodType.empty:
-            neighbourRod = None
-        return neighbourRod
+                iAss, _min = min(dis.items(),key=lambda e:e[1])
+                if _min < CRITICAL:
+                    add[2] = iAss
+                    assert rodMap.get(tuple(add)) is not None
+                    neighbourRod =  rodMap[tuple(add)]
+
+        if neighbourRod is not None:
+            if neighbourRod.type is Types.RodType.empty:
+                neighbourRod = None
+
+        #if neighbourRod is None:
+        #    print 'cant find rod'
+        #else:
+        #    print 'rod founded'
+        #return neighbourRod
 
     for rod in rods:
         iRowCol = rod.address
@@ -119,27 +134,31 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     # radial_distribution
     distribution = []
     f.readline()
-    pattern = re.compile(r'\S*')
+    pattern = re.compile(r'\S+')
+    patternEnd = re.compile(r'\$AxialPower\s*')
     for line in f:
-        if line == '$AxialPower':
+        if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        distribution.append(_list[1])
+        if len(_list) != 2:
+            pass
+        distribution.append(float(_list[1]))
     assert len(distribution) == 52
     distribution = np.array(distribution)
     distribution /= distribution.max()
-    for add,rod in rodsMap.iter():
+    for add,rod in rodsMap.items():
         iAss = add[2]
-        rod.radialPowerDistribution = distribution[iAss]
+        rod.radialPowerDistribution = distribution[iAss-1]
     # axial distribution
     height = []
     distribution = []
+    patternEnd = re.compile(r'\$WaterHistory\s*')
     for line in f:
-        if line == '$WaterHistory':
+        if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        height.append(_list[0])
-        distribution.append(_list[1])
+        height.append(float(_list[0]))
+        distribution.append(float(_list[1]))
     height = np.array(height)
     distribution = np.array(distribution)
     hgrid = np.linspace(0., coreHeight, nz)
@@ -152,8 +171,9 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     # water history
     time = []
     water = []
+    patternEnd = re.compile(r'\$PowerHistory\s*')
     for line in f:
-        if line == '$PowerHistory':
+        if patternEnd.match(line):
             break
         _list = pattern.findall(line)
         time.append(_list[0])
@@ -184,6 +204,7 @@ if __name__ == "__main__":
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
 
+    simulator.set_initial(rodUnits)
     simulator.start()
     print 'done'
 

@@ -7,6 +7,7 @@ import re
 
 
 def build_rod_units(nr, nz, filename):
+    print 'building rods...'
     # type: (int, int, str) -> Types.RodUnit
     def id_generator():
         ret = 0
@@ -20,7 +21,12 @@ def build_rod_units(nr, nz, filename):
         _list = pattern.findall(line)
         _gen = id_generator()
         # should check?
-        newRod = Types.RodUnit(_gen.next(), nr, nz, (float(_list[0]), float(_list[1])), (int(_list[2]), int(_list[3]), int(_list[4])))
+        newRod = Types.RodUnit(_gen.next(), nz, nr-5, nr,
+                               (float(_list[0]), float(_list[1])),              # position
+                               (int(_list[2]), int(_list[3]), int(_list[4])),   # hang lie zu
+                                0.00836/2, 0.0095/2,                            # radious
+                                5768                                            #material stuff: gap heat transfer
+                               )
         rods.append(newRod)
 
 
@@ -63,7 +69,6 @@ def build_rod_units(nr, nz, filename):
     for rod in rods:
         assert rodMap.get(rod.address) is None
         rodMap[rod.address] = rod
-    print len(rods)
 
     def findRod(add, myPosi):
         # type: (tuple, np.array) -> Types.RodUnit
@@ -109,6 +114,8 @@ def build_rod_units(nr, nz, filename):
             if neighbourRod.type is Types.RodType.empty:
                 neighbourRod = None
 
+        return neighbourRod
+
         #if neighbourRod is None:
         #    print 'cant find rod'
         #else:
@@ -130,6 +137,7 @@ def build_rod_units(nr, nz, filename):
 
 
 def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
+    print 'initialing heat rate ...'
     f = open(filename, 'r')
     # radial_distribution
     distribution = []
@@ -161,10 +169,12 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         distribution.append(float(_list[1]))
     height = np.array(height)
     distribution = np.array(distribution)
-    hgrid = np.linspace(0., coreHeight, nz)
+    space = coreHeight / nz
+    hgrid = np.linspace(0. + space, coreHeight - space, nz)
     axialDistribution = np.interp(hgrid, height, distribution)
     for rod in rods:
         rod.axialPowwerFactor = axialDistribution
+        rod.height = hgrid
     del height
     del distribution
 
@@ -176,8 +186,8 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        time.append(_list[0])
-        water.append(_list[1])
+        time.append(float(_list[0]))
+        water.append(float(_list[1]))
     Types.PressureVessle.waterHistory = np.array((time, water))
     del water
 
@@ -186,14 +196,14 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     power = []
     for line in f:
         _list = pattern.findall(line)
-        time.append(_list[0])
-        power.append(_list[1])
+        time.append(float(_list[0]))
+        power.append(float(_list[1]))
     Types.PressureVessle.powerHistory = np.array((time, power))
     del time
     del power
 
 def clean_rod_units(rods,rodsMap):
-    cleaned_rod = filter(lambda rod: rod.type is Types.RodType.empty, rods)
+    cleaned_rod = filter(lambda rod: rod.type is not Types.RodType.empty, rods)
     return cleaned_rod, None
 
 if __name__ == "__main__":
@@ -204,7 +214,9 @@ if __name__ == "__main__":
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
 
-    simulator.set_initial(rodUnits)
+    simulator.config_material(rodUnits)
+    simulator.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
+    simulator.ready_to_solve(rodUnits)
     simulator.start()
     print 'done'
 

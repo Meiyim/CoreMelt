@@ -3,7 +3,11 @@
 import CMTypes as Types
 import numpy as np
 import Sim as simulator
+import initializer as initor
+import sys
 import re
+import petsc4py
+petsc4py.init(sys.argv)
 
 
 def build_rod_units(nr, nz, filename):
@@ -21,7 +25,7 @@ def build_rod_units(nr, nz, filename):
         _list = pattern.findall(line)
         _gen = id_generator()
         # should check?
-        newRod = Types.RodUnit(_gen.next(), nz, nr-5, nr,
+        newRod = Types.RodUnit(_gen.next(), nz, nr-10, nr,
                                (float(_list[0]), float(_list[1])),              # position
                                (int(_list[2]), int(_list[3]), int(_list[4])),   # hang lie zu
                                 0.00836/2, 0.0095/2,                            # radious
@@ -148,15 +152,13 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        if len(_list) != 2:
-            pass
         distribution.append(float(_list[1]))
     assert len(distribution) == 52
     distribution = np.array(distribution)
     distribution /= distribution.max()
     for add,rod in rodsMap.items():
         iAss = add[2]
-        rod.radialPowerDistribution = distribution[iAss-1]
+        rod.radialPowerFactor = distribution[iAss-1] / (17*17) #per rod
     # axial distribution
     height = []
     distribution = []
@@ -172,8 +174,9 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     space = coreHeight / nz
     hgrid = np.linspace(0. + space, coreHeight - space, nz)
     axialDistribution = np.interp(hgrid, height, distribution)
+    axialDistribution /= axialDistribution.max()
     for rod in rods:
-        rod.axialPowwerFactor = axialDistribution
+        rod.axialPowerFactor = axialDistribution
         rod.height = hgrid
     del height
     del distribution
@@ -197,10 +200,25 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     for line in f:
         _list = pattern.findall(line)
         time.append(float(_list[0]))
-        power.append(float(_list[1]))
+        power.append(float(_list[1])*3150e6) # decay heat power: 3150e6
     Types.PressureVessle.powerHistory = np.array((time, power))
     del time
     del power
+    # init other stuff
+    for rod in rods:
+        assert isinstance(rod,Types.RodUnit)
+        if rod.type is Types.RodType.fuel:
+            rInSpace = rod.inRadious / rod.nRin
+            rOutSpace = (rod.radious - rod.inRadious) / (rod.nR - rod.nRin)
+            rInGrid = np.linspace(0.+rInSpace/2, rod.inRadious - rInSpace/2, rod.nRin)
+            rOutGrid = np.linspace(rod.inRadious + rOutSpace/2, rod.radious - rOutSpace/2, rod.nR - rod.nRin)
+            rod.rgrid = np.hstack((rInGrid,rOutGrid))
+        else:
+            rspace = rod.radious/rod.nR
+            rod.rgrid  = np.linspace(0.+rspace, rod.radious - rspace, rod.nR)
+
+
+
 
 def clean_rod_units(rods,rodsMap):
     cleaned_rod = filter(lambda rod: rod.type is not Types.RodType.empty, rods)
@@ -215,8 +233,11 @@ if __name__ == "__main__":
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
 
     simulator.config_material(rodUnits)
-    simulator.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
+    initor.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
+    fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
+    simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
     simulator.ready_to_solve(rodUnits)
-    simulator.start()
+    #start solve
+    simulator.start(rodUnits, 1000, 1)
     print 'done'
 

@@ -39,6 +39,7 @@ def config_material(rods):
             assert False
 
 def calGr(dT,L):
+    dT = abs(dT)
     beta = 0.434
     g = 9.8
     niu = 2.82e-4
@@ -263,7 +264,7 @@ def calc_other_temperature(rod, Tf, dt): #currently  only 2
     xsol.assemblyEnd()
 
     petsc_ksp.setOperators(A)
-    petsc_ksp.setTolerences(rtol=1.e-6,max_it=1000)
+    petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
     petsc_ksp.solve(b,xsol)
     raw_arr = xsol.getArray()
     print 'petsc solve done for rod: %d-%d-%d -average T: %f iter %d' % (rod.address + (sum(raw_arr)/len(raw_arr),petsc_ksp.getIterationNumber()))

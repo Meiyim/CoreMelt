@@ -18,7 +18,7 @@ def set_initial(rods,tstart,deltaT,Tf):
             continue
         rod.T  = np.zeros((rod.nH,rod.nR))
         rod.T[:,:] = 373 - 20
-        rod.qsource = np.zeros((rod.nH, rod.nR))
+        rod.qsource = np.zeros(rod.nH)
 
     for rod in rods: #set temperature initual for fuel rod
         assert isinstance(rod,Types.RodUnit)

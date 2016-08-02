@@ -156,6 +156,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     assert len(distribution) == 52
     distribution = np.array(distribution)
     distribution /= distribution.max()
+    distribution /= 4 # quarter core considered
     for add,rod in rodsMap.items():
         iAss = add[2]
         rod.radialPowerFactor = distribution[iAss-1] / (17*17) #per rod
@@ -236,7 +237,7 @@ if __name__ == "__main__":
     initor.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
     simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
-    simulator.ready_to_solve(rodUnits)
+    #simulator.ready_to_solve(rodUnits)
     #start solve
     simulator.start(rodUnits, 1000, 1)
     print 'done'

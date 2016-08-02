@@ -53,9 +53,9 @@ class PETScWrapper:
         return self.A.duplicate(copy=True)
 
     def to1d(self,i,j):
-        if i==0 or i == self.imax:
+        if i==-1 or i == self.imax:
             return None
-        if j==0 or j == self.jmax:
+        if j==-1 or j == self.jmax:
             return None
         return j*self.imax+i
 
@@ -64,23 +64,27 @@ class PETScWrapper:
         imax = self.imax
         jmax = self.jmax
         rspace = rGrid[0] - rGrid[1]
+        print 'black rod hegith space %f' % hspace
 
         def giveVal(idir,i,j):
             A = 0.0
             lam = 0.0
             dis = 0.0
-            if idir == 0 and idir == 2: #north and south
+            rspace = rGrid[1] - rGrid[0]
+            if idir == 0 or idir == 2: #north and south
                 dis = hspace
                 A   = math.pi * 2 * rGrid[i] * rspace
                 lam = lamda
             elif idir == 1: #east
-                dis = rGrid[j+1] - rGrid[j]
+                dis = rspace
                 A   = math.pi * 2 * rGrid[i] * hspace
                 lam = lamda
             elif idir == 3: #west
-                dis = rGrid[j] - rGrid[j-1]
+                dis = rspace
                 A   = math.pi * 2 * rGrid[i] * hspace
                 lam = lamda
+            else:
+                assert False
             return 0. - lam * A / dis
 
         for j in xrange(0,jmax):
@@ -96,8 +100,8 @@ class PETScWrapper:
                 vals[1] = giveVal(1,i,j)
                 vals[2] = giveVal(2,i,j)
                 vals[3] = giveVal(3,i,j)
-                vals = filter(lambda i,val : val if cols[i] is None else None, vals)
-                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is not None and rhs is not None else lhs + rhs,vals)
+                vals = map(lambda (i,val) : val if cols[i] is not None else None, enumerate(vals))
+                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is None or rhs is None else lhs + rhs,vals)
                 cols = filter(lambda val: val is not None, cols)
                 vals = filter(lambda val: val is not None, vals)
                 self.A.setValue(row,row,center)       #diagnal
@@ -126,13 +130,15 @@ class PETScWrapper:
                     lam = lamdaOut
                     A   = math.pi * 2 * rGrid[i] * rOutSpace
             elif idir == 1: #east
-                dis = rGrid[j+1] - rGrid[j]
                 A   = math.pi * 2 * rGrid[i] * hspace
                 if i<ibound:
+                    dis = rInSpace
                     lam = lamdaIn
                 elif i==ibound-1:
+                    dis = (rInSpace+rOutSpace) / 2
                     lam = h * dis
                 else:
+                    dis = rOutSpace
                     lam = lamdaOut
             elif idir == 2: #south
                 dis = hspace
@@ -143,14 +149,18 @@ class PETScWrapper:
                     lam = lamdaOut
                     A   = math.pi * 2 * rGrid[i] * rOutSpace
             elif idir == 3: #west
-                dis = rGrid[j] - rGrid[j-1]
                 A   = math.pi * 2 * rGrid[i] * hspace
                 if i<ibound:
+                    dis = rInSpace
                     lam = lamdaIn
                 elif i==ibound:
+                    dis = (rInSpace + rOutSpace) / 2
                     lam = h * dis
                 else:
+                    dis = rOutSpace
                     lam = lamdaOut
+            else:
+                assert False
             return 0. - lam * A / dis
 
         for i in xrange(0,imax):
@@ -166,10 +176,10 @@ class PETScWrapper:
                 vals[1] = giveVal(1,i,j)
                 vals[2] = giveVal(2,i,j)
                 vals[3] = giveVal(3,i,j)
-                vals = filter(lambda i,val : val if cols[i] is None else None, vals)
-                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is not None and rhs is not None else lhs + rhs,vals)
+                vals = map(lambda (i,val) : val if cols[i] is not None else None, enumerate(vals))
                 cols = filter(lambda val: val is not None, cols)
                 vals = filter(lambda val: val is not None, vals)
+                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is None or rhs is None else lhs + rhs,vals)
                 self.A.setValue(row,row,center)       #diagnal
                 self.A.setValues([row],cols,vals)     #off-diagnal
         self.A.assemblyBegin()
@@ -182,7 +192,7 @@ class RodUnit(object):
         self.position = np.array(pos, dtype=np.float64)
         self.T = None   # type: np.ndarray
         self.heatCoef = None # type: np.ndarray
-        self.qbound = None #type:np.ndarray qsouce inflow == Positive, outflow == negative
+        self.qbound = None #type:np.ndarray# qsouce inflow == Positive, outflow == negative
         self.qup = None    # type: np.ndarray
         self.qdown = None  # type: np.ndarray
         self.qsource = None #type: np.ndarray

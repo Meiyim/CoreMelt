@@ -12,11 +12,21 @@ def set_initial(rods,tstart,deltaT,Tf):
     Types.PressureVessle.currentTime = tstart
     Types.PressureVessle.timePush(0)
     nowWater, nowPower = Types.PressureVessle.now()
-    for rod in rods:
+    for rod in rods: # set the initial for blac/gray rod
         assert isinstance(rod,Types.RodUnit)
+        if rod.type is Types.RodType.fuel:
+            continue
+        rod.T  = np.zeros((rod.nH,rod.nR))
+        rod.T[:,:] = 373 - 20
+        rod.qsource = np.zeros((rod.nH, rod.nR))
+
+    for rod in rods: #set temperature initual for fuel rod
+        assert isinstance(rod,Types.RodUnit)
+        if rod.type is not Types.RodType.fuel:
+            continue
         rodPower = rod.radialPowerFactor * nowPower
         rod.qsource = rod.axialPowerFactor * rodPower
-        print rod.qsource
+        #print rod.qsource
         Trows = []
         vspace = ( rod.height[-1] - rod.height[0] ) / (rod.height.shape[0]-1)
         #print 'donging rod %s' % str(rod.address)
@@ -27,17 +37,22 @@ def set_initial(rods,tstart,deltaT,Tf):
             Tco = Tf + q / (math.pi * 2 * rod.radious * h)
             Tci = Tco + q / (2 * math.pi * rod.material.lamdaOut) * math.log(rod.radious/rod.inRadious)
             To  = Tci + q / (math.pi * rod.inRadious * 2 *rod.gapHeatRate )
-            print '4 key temp for rod %d-%d-%d: flux: %f, Tco: %f, Tci: %f, To:%f Tf: %f' % (rod.address + (q,Tco,Tci,To,Tf) )
+            #print '4 key temp for rod %d-%d-%d: flux: %f, Tco: %f, Tci: %f, To:%f Tf: %f' % (rod.address + (q,Tco,Tci,To,Tf) )
+            assert Tco - Tf > 1.
             tIn = np.linspace(To,To,rod.nRin)
             tOut= np.linspace(Tci,Tco,rod.nR - rod.nRin)
             Trows.append( np.hstack((tIn,tOut)) )
         Trows = tuple(Trows)
         rod.T = np.vstack(Trows)
+        assert rod.T.shape == (rod.nH,rod.nR)
+
+    # set other initials
+    for rod in rods:
         rod.qbound = np.zeros(rod.nH)
         rod.qup = np.zeros(rod.nR)
         rod.qdown = np.zeros(rod.nR)
         rod.heatCoef = np.zeros(rod.nH)
-        assert rod.T.shape == (rod.nH,rod.nR)
+
 
 
 def initPetscTemplate(rods):

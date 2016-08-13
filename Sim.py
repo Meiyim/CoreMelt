@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import copy
 import CMTypes as Types
 from petsc4py import PETSc
 
@@ -118,8 +119,8 @@ def save_restart_file(rods):
 
 def calc_rod_bound(rod,Tf):
     #type: (Types.RodUnit, float) -> None
-    SIGMA = 1.0e-12
-    EPSILONG = 1.0e-3
+    SIGMA = 5.67e-8
+    EPSILONG = 0.7
     RADIOUS = rod.radious
     SPACE = 0.016
     ROD_SPACE = rod.height[1] - rod.height[0]
@@ -136,7 +137,9 @@ def calc_rod_bound(rod,Tf):
 
     for ih,L in enumerate(rod.height):
         L+=1.0 #TODO to prevent zero height ...
+        print rod.T[ih,:]
         selfT = rod.T[ih,-1] #outside wall Temp ... no extrapolation now
+        print selfT
         deltaT = selfT - Tf
         #print deltaT
         h = calcBoilHeatTransferRate(calGr(deltaT,L),1,1,L) #assuming deltaT == 10
@@ -146,7 +149,7 @@ def calc_rod_bound(rod,Tf):
         for dir,neighbourRod in rod.neighbour.items():
             if neighbourRod is None:
                 continue
-            qRadiation = Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
+            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
         rod.qbound[ih] = qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
@@ -154,7 +157,7 @@ def calc_rod_bound(rod,Tf):
         rod.qdown[ir] = 0.
 
 
-def calc_fuel_temperature(rod,Tf,dt): #currently  only 2
+def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
     A    = fuelTemplate.getMat()
     b    = petsc_rhs.duplicate()
@@ -200,25 +203,43 @@ def calc_fuel_temperature(rod,Tf,dt): #currently  only 2
             row = j * rod.nR + i
             b.setValue(row, transidentCoef * rod.T[j,i], addv = True)
             A.setValue(row, row, transidentCoef, addv =  True)
+    #block melted part
+    for melted_part in rod.melted:
+        neighbour = [list(melted_part), list(melted_part), list(melted_part), list(melted_part)]
+        neighbour[0][0] += 1
+        neighbour[1][1] += 1
+        neighbour[2][0] -= 1
+        neighbour[3][1] -= 1
+        neighbour = filter(lambda val: (0 <= val[0] < rod.nH) and (0 <= val[1] < rod.nR), neighbour)
+        neighbour = map(lambda (j,i): j*rod.nR + i ,neighbour)
+        row = melted_part[0] * rod.nR + melted_part[1]
+        A.setValue(row,row,1.,addv = False) # diagnal == 1
+        vals = [0.] * 4
+        A.setValues(row, neighbour, vals, addv = False) # clear off-diagnal
+        A.setValues(neighbour, row, vals, addv = False)
+        b.setValue(row, 0., addv = False) # right hand side
 
     A.assemblyBegin()
     b.assemblyBegin()
     xsol.assemblyBegin()
+
     A.assemblyEnd()
     b.assemblyEnd()
     xsol.assemblyEnd()
 
+    petsc_ksp.setInitialGuessNonzero(False)
     petsc_ksp.setOperators(A)
     petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
     petsc_ksp.solve(b,xsol)
     raw_arr = xsol.getArray()
-    print 'petsc solve done for rod: %d-%d-%d -average T: %f iter %d' % (rod.address + (sum(raw_arr)/len(raw_arr),petsc_ksp.getIterationNumber()))
+    if verbose:
+        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
         rod.T[j,i] = val
 
-def calc_other_temperature(rod, Tf, dt): #currently  only 2
+def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
     A    = blackTemplate.getMat()
     b    = petsc_rhs.duplicate()
@@ -248,6 +269,7 @@ def calc_other_temperature(rod, Tf, dt): #currently  only 2
 
     rspace = rod.rgrid[1] - rod.rgrid[0]
     hspace = rod.height[1] - rod.height[0]
+    #apply transient term
     for j in xrange(0, rod.nH):
         for i in xrange(0, rod.nR):
             volumn = rod.rgrid[i] * 2 * math.pi * rspace * hspace
@@ -255,6 +277,22 @@ def calc_other_temperature(rod, Tf, dt): #currently  only 2
             row = j * rod.nR + i
             b.setValue(row, transidentCoef * rod.T[j,i], addv = True)
             A.setValue(row, row, transidentCoef, addv =  True)
+
+    #block melted part
+    for melted_part in rod.melted:
+        neighbour = [list(melted_part), list(melted_part), list(melted_part), list(melted_part)]
+        neighbour[0][0] += 1
+        neighbour[1][1] += 1
+        neighbour[2][0] -= 1
+        neighbour[3][1] -= 1
+        neighbour = filter(lambda val: (0 <= val[0] < rod.nH) and (0 <= val[1] < rod.nR), neighbour)
+        neighbour = map(lambda (j,i): j*rod.nR + i ,neighbour)
+        row = melted_part[0] * rod.nR + melted_part[1]
+        A.setValue(row,row,1.,addv = False) # diagnal == 1
+        vals = [0.] * 4
+        A.setValues(row, neighbour, vals, addv = False) # clear off-diagnal
+        A.setValues(neighbour, row, vals, addv = False)
+        b.setValue(row, 0., addv = False) # right hand side
 
     A.assemblyBegin()
     b.assemblyBegin()
@@ -267,37 +305,76 @@ def calc_other_temperature(rod, Tf, dt): #currently  only 2
     petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
     petsc_ksp.solve(b,xsol)
     raw_arr = xsol.getArray()
-    print 'petsc solve done for rod: %d-%d-%d -average T: %f iter %d' % (rod.address + (sum(raw_arr)/len(raw_arr),petsc_ksp.getIterationNumber()))
+    if verbose:
+        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
         rod.T[j,i] = val
 
 
+def set_melt_for_black(rod):
+    #type (Types.RodUnit) -> None
+    CRITICAL = 2000
+    for j in xrange(0,rod.nH):
+        for i in xrange(0,rod.nR):
+            if (j,i) in rod.melted:
+                continue
+            if rod.T[j,i] > CRITICAL:  #fuel cell part
+                rod.melted.append((j,i))
+
+def set_melt_for_fuel(rod): # find the melte part ...
+    #type (Types.RodUnit) -> None
+    FUEL_CRITICAL = 3000
+    CLAD_CRITICAL = 2000
+    for j in xrange(0,rod.nH):
+        for i in xrange(0,rod.nR):
+            if (j,i) in rod.melted:
+                continue
+            if i < rod.nRin and rod.T[j,i] > FUEL_CRITICAL:  #fuel cell part
+                rod.melted.append((j,i))
+            elif i >= rod.nRin and rod.T[j,i] > CLAD_CRITICAL: # clad
+                rod.melted.append((j,i))
+
+def calc_rod_source(rod,nowPower):
+    #type (Types.RodUnit,float)->(None)
+    h = (rod.height[1]-rod.height[0])
+    volumn = math.pi * rod.radious**2 * h
+    rodPower = rod.radialPowerFactor * nowPower
+    rod.qsource = rod.axialPowerFactor * rodPower / volumn
+
 def start(rods,timeLimit, dt):
     #type: (list,float,float) -> None
     print 'starting simulation'
-
+    print 'the first steady status'
+    nowWater, nowPower = Types.PressureVessle.now()
+    for rod in rods:
+        calc_rod_source(rod,nowPower)
+        calc_rod_bound(rod,373)
+        if rod.type is Types.RodType.fuel:
+            calc_fuel_temperature(rod,373,1.e30, True)
+        else:
+            calc_other_temperature(rod,373,1.e30, True)
+    print 'finish calculating steay status'
+    #begin time iteration
+    exit()
     while Types.PressureVessle.currentTime <= timeLimit:
         print 'solving time %f' % Types.PressureVessle.currentTime
+
         print 'saving...'
-        save_restart_file(rods)
+        #save_restart_file(rods)
         Types.PressureVessle.timePush(dt)
         nowWater, nowPower = Types.PressureVessle.now()
         print 'calculating heat souce and temp bound'
         for rod in rods:
-            h = (rod.height[1]-rod.height[0]) * rod.height.shape[0]
-            volumn = math.pi * rod.radious**2 * h
-            rodPower = rod.radialPowerFactor * nowPower
-            rod.qsource = rod.axialPowerFactor * rodPower / volumn
+            calc_rod_source(rod,nowPower)
             calc_rod_bound(rod,373) #last parameter is fluid temp
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation
+                set_melt_for_fuel(rod)
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
-
-        print 'buillding matrix...'
-        print 'solving matrix...'
+                set_melt_for_black(rod)
 
     print  'similation done'
 

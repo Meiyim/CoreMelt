@@ -212,7 +212,10 @@ class RodUnit(object):
         self.gapHeatRate = l
         #material
         self.material = None # type: MaterialProterty
+        self.melted = [] #type : list
         # ksp stuff
+    def getSummary(self):
+        return self.T.max(), self.T.min(), self.T.mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)*(self.height[1]-self.height[0])
 
     def saveToFile(self,restartFile): #save the non-Numpy propertyies
         def getindex(rod):

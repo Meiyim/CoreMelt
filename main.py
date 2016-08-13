@@ -168,7 +168,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        height.append(float(_list[0]))
+        height.append(float(_list[0]) * 1000)
         distribution.append(float(_list[1]))
     height = np.array(height)
     distribution = np.array(distribution)
@@ -232,9 +232,9 @@ if __name__ == "__main__":
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
-
     simulator.config_material(rodUnits)
     initor.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
+
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
     simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
     #simulator.ready_to_solve(rodUnits)

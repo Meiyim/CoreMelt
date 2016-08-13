@@ -137,9 +137,7 @@ def calc_rod_bound(rod,Tf):
 
     for ih,L in enumerate(rod.height):
         L+=1.0 #TODO to prevent zero height ...
-        print rod.T[ih,:]
         selfT = rod.T[ih,-1] #outside wall Temp ... no extrapolation now
-        print selfT
         deltaT = selfT - Tf
         #print deltaT
         h = calcBoilHeatTransferRate(calGr(deltaT,L),1,1,L) #assuming deltaT == 10
@@ -150,6 +148,7 @@ def calc_rod_bound(rod,Tf):
             if neighbourRod is None:
                 continue
             qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
+        print qRadiation, h
         rod.qbound[ih] = qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
@@ -351,6 +350,7 @@ def start(rods,timeLimit, dt):
     for rod in rods:
         calc_rod_source(rod,nowPower)
         calc_rod_bound(rod,373)
+    for rod in rods: #update T
         if rod.type is Types.RodType.fuel:
             calc_fuel_temperature(rod,373,1.e30, True)
         else:
@@ -369,6 +369,7 @@ def start(rods,timeLimit, dt):
         for rod in rods:
             calc_rod_source(rod,nowPower)
             calc_rod_bound(rod,373) #last parameter is fluid temp
+        for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation
                 set_melt_for_fuel(rod)

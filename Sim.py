@@ -149,7 +149,6 @@ def calc_rod_bound(rod,Tf):
                 continue
             qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
         rod.qbound[ih] = qRadiation
-        print h, qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
         rod.qup[ir] = 0.
@@ -231,12 +230,12 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
     petsc_ksp.solve(b,xsol)
     raw_arr = xsol.getArray()
-    if verbose:
-        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
         rod.T[j,i] = val
+    if verbose:
+        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
 
 def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None

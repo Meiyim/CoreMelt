@@ -218,9 +218,6 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
             rspace = rod.radious/rod.nR
             rod.rgrid  = np.linspace(0.+rspace, rod.radious - rspace, rod.nR)
 
-
-
-
 def clean_rod_units(rods,rodsMap):
     cleaned_rod = filter(lambda rod: rod.type is not Types.RodType.empty, rods)
     return cleaned_rod, None

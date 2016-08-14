@@ -148,8 +148,8 @@ def calc_rod_bound(rod,Tf):
             if neighbourRod is None:
                 continue
             qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
-        print qRadiation, h
         rod.qbound[ih] = qRadiation
+        print h, qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
         rod.qup[ir] = 0.
@@ -168,11 +168,12 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
             xsol.setValue(row,rod.T[j,i])
 
     # out bound --- 3rd condition
+    outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
     for j in xrange(0, rod.nH):
         i = rod.nR - 1
         row = j*rod.nR + i
-        b.setValue(row, rod.heatCoef[j] * Tf  - rod.qbound[j] ) # qbound move to right hand side ...
-        A.setValue(row, row, rod.heatCoef[j], addv = True)
+        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j] ) # qbound move to right hand side ...
+        A.setValue(row, row, rod.heatCoef[j] * outsideAera, addv = True)
     #upbound --- 2nd condition
     for i in xrange(0, rod.nR):
         j = rod.nH - 1
@@ -221,7 +222,6 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     A.assemblyBegin()
     b.assemblyBegin()
     xsol.assemblyBegin()
-
     A.assemblyEnd()
     b.assemblyEnd()
     xsol.assemblyEnd()
@@ -357,6 +357,7 @@ def start(rods,timeLimit, dt):
             calc_other_temperature(rod,373,1.e30, True)
     print 'finish calculating steay status'
     #begin time iteration
+    open('rod_1.dat','w').write(rods[0].get2DTec() )
     exit()
     while Types.PressureVessle.currentTime <= timeLimit:
         print 'solving time %f' % Types.PressureVessle.currentTime

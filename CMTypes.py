@@ -76,12 +76,14 @@ class PETScWrapper:
                 A   = math.pi * 2 * rGrid[i] * rspace
                 lam = lamda
             elif idir == 1: #east
+                r = rGrid[i] if i==imax-1 else (rGrid[i+1] + rGrid[i])/2 
                 dis = rspace
-                A   = math.pi * 2 * rGrid[i] * hspace
+                A   = math.pi * 2 * r * hspace
                 lam = lamda
             elif idir == 3: #west
+                r = rGrid[i] if i==0 else (rGrid[i-1] + rGrid[i])/2
                 dis = rspace
-                A   = math.pi * 2 * rGrid[i] * hspace
+                A   = math.pi * 2 * r * hspace
                 lam = lamda
             else:
                 assert False
@@ -130,7 +132,8 @@ class PETScWrapper:
                     lam = lamdaOut
                     A   = math.pi * 2 * rGrid[i] * rOutSpace
             elif idir == 1: #east
-                A   = math.pi * 2 * rGrid[i] * hspace
+                r = rGrid[i] if i==imax-1 else (rGrid[i+1] + rGrid[i]) /2
+                A   = math.pi * 2 * r * hspace
                 if i<ibound:
                     dis = rInSpace
                     lam = lamdaIn
@@ -149,7 +152,8 @@ class PETScWrapper:
                     lam = lamdaOut
                     A   = math.pi * 2 * rGrid[i] * rOutSpace
             elif idir == 3: #west
-                A   = math.pi * 2 * rGrid[i] * hspace
+                r = rGrid[i] if i==0 else (rGrid[i-1] + rGrid[i]) /2
+                A   = math.pi * 2 * r * hspace
                 if i<ibound:
                     dis = rInSpace
                     lam = lamdaIn
@@ -163,8 +167,8 @@ class PETScWrapper:
                 assert False
             return 0. - lam * A / dis
 
-        for i in xrange(0,imax):
-            for j in xrange(0,jmax):
+        for i in xrange(0, imax):
+            for j in xrange(0, jmax):
                 row = self.to1d(i,j)
                 cols=[None,None,None,None] # north, east, south, west
                 cols[0] = self.to1d(i,j+1)
@@ -248,6 +252,16 @@ class RodUnit(object):
                                  self.material.cpOut
                             )
         restartFile.write(bytes)
+
+    def get2DTec(self):
+        strBuffer = 'title = ' + str(self.address)
+        strBuffer += 'zone I=%d, J=%d, F=point'  % (self.nH, self.nR)
+        zone = []
+        for j in xrange(0, self.nH):
+            for i in xrange(0, self.nR):
+                zone.append('%e %e %e\n' % (self.rgrid[i], self.height[j], self.T[j,i] ))
+        strBuffer += ''.join(zone)
+        return strBuffer
 
 
     def getTecplotZone(self):

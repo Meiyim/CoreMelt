@@ -168,7 +168,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         if patternEnd.match(line):
             break
         _list = pattern.findall(line)
-        height.append(float(_list[0]) * 1000)
+        height.append(float(_list[0]) )
         distribution.append(float(_list[1]))
     height = np.array(height)
     distribution = np.array(distribution)
@@ -225,7 +225,7 @@ def clean_rod_units(rods,rodsMap):
 if __name__ == "__main__":
     nz = 100
     nr = 30
-    coreHeight = 3657
+    coreHeight = 3.657
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)

@@ -177,12 +177,12 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     for i in xrange(0, rod.nR):
         j = rod.nH - 1
         row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qup[i] ) # qflux move to right hand side
+        b.setValue(row, 0. - rod.qup[i] ,addv = True) # qflux move to right hand side
     #down bound --- 2nd condition
     for i in xrange(0, rod.nR):
         j = 0
         row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qdown[i] ) # q flux move to right hand side
+        b.setValue(row, 0. - rod.qdown[i], addv = True) # q flux move to right hand side
     #set body source
     spaceIn = rod.rgrid[1] - rod.rgrid[0]
     spaceOut = rod.rgrid[-1] - rod.rgrid[-2]
@@ -224,6 +224,7 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     A.assemblyEnd()
     b.assemblyEnd()
     xsol.assemblyEnd()
+    #b.view()
 
     petsc_ksp.setInitialGuessNonzero(False)
     petsc_ksp.setOperators(A)
@@ -258,12 +259,12 @@ def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     for i in xrange(0, rod.nR):
         j = rod.nH - 1
         row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qup[i] ) # qflux move to right hand side
+        b.setValue(row, 0. - rod.qup[i], addv = True ) # qflux move to right hand side
     #down bound --- 2nd condition
     for i in xrange(0, rod.nR):
         j = 0
         row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qdown[i] ) # q flux move to right hand side
+        b.setValue(row, 0. - rod.qdown[i], addv = True) # q flux move to right hand side
 
     rspace = rod.rgrid[1] - rod.rgrid[0]
     hspace = rod.height[1] - rod.height[0]
@@ -360,7 +361,6 @@ def start(rods,timeLimit, dt):
     exit()
     while Types.PressureVessle.currentTime <= timeLimit:
         print 'solving time %f' % Types.PressureVessle.currentTime
-
         print 'saving...'
         #save_restart_file(rods)
         Types.PressureVessle.timePush(dt)

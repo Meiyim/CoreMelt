@@ -31,7 +31,7 @@ def set_initial(rods,tstart,deltaT,Tf):
         vspace = ( rod.height[-1] - rod.height[0] ) / (rod.height.shape[0]-1)
         #print 'donging rod %s' % str(rod.address)
         for ih in range(0,rod.nH):
-            L = rod.height[ih] + 1 # TODO L should NOT be ZERO
+            L = rod.height[ih] + 0.1 # TODO L should NOT be ZERO
             q = rod.qsource[ih] / vspace
             h = simulator.calcBoilHeatTransferRate(simulator.calGr(deltaT,L),1,1,L) #assuming deltaT == 10
             Tco = Tf + q / (math.pi * 2 * rod.radious * h)

@@ -103,9 +103,10 @@ class PETScWrapper:
                 vals[2] = giveVal(2,i,j)
                 vals[3] = giveVal(3,i,j)
                 vals = map(lambda (i,val) : val if cols[i] is not None else None, enumerate(vals))
-                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is None or rhs is None else lhs + rhs,vals)
+                #center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is None or rhs is None else lhs + rhs,vals)
                 cols = filter(lambda val: val is not None, cols)
                 vals = filter(lambda val: val is not None, vals)
+                center = 0. - sum(vals)
                 self.A.setValue(row,row,center)       #diagnal
                 self.A.setValues([row],cols,vals)     #off-diagnal
         self.A.assemblyBegin()
@@ -183,7 +184,7 @@ class PETScWrapper:
                 vals = map(lambda (i,val) : val if cols[i] is not None else None, enumerate(vals))
                 cols = filter(lambda val: val is not None, cols)
                 vals = filter(lambda val: val is not None, vals)
-                center  = 0. - reduce(lambda lhs,rhs : 0. if lhs is None or rhs is None else lhs + rhs,vals)
+                center = 0. - sum(vals)
                 self.A.setValue(row,row,center)       #diagnal
                 self.A.setValues([row],cols,vals)     #off-diagnal
         self.A.assemblyBegin()
@@ -254,8 +255,8 @@ class RodUnit(object):
         restartFile.write(bytes)
 
     def get2DTec(self):
-        strBuffer = 'title = ' + str(self.address)
-        strBuffer += 'zone I=%d, J=%d, F=point'  % (self.nH, self.nR)
+        strBuffer = 'title = singleRod\n'
+        strBuffer += 'zone I=%d, J=%d, F=point\n'  % (self.nH, self.nR)
         zone = []
         for j in xrange(0, self.nH):
             for i in xrange(0, self.nR):

@@ -38,7 +38,7 @@ def set_initial(rods,tstart,deltaT,Tf):
             Tci = Tco + q / (2 * math.pi * rod.material.lamdaOut) * math.log(rod.radious/rod.inRadious)
             To  = Tci + q / (math.pi * rod.inRadious * 2 *rod.gapHeatRate )
             #print '4 key temp for rod %d-%d-%d: flux: %f, Tco: %f, Tci: %f, To:%f Tf: %f' % (rod.address + (q,Tco,Tci,To,Tf) )
-            assert Tco - Tf > 1.
+            assert Tco - Tf > 0.0
             tIn = np.linspace(To,To,rod.nRin)
             tOut= np.linspace(Tci,Tco,rod.nR - rod.nRin)
             Trows.append( np.hstack((tIn,tOut)) )

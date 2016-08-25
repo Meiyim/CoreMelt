@@ -5,7 +5,7 @@ from petsc4py import PETSc
 
 
 class PressureVessle(object):
-    currentTime = 98.
+    currentTime = 0.0
     currentWater = 0.0
     currentPower = 0.0
     waterHistory = None #type: np.ndarray
@@ -220,7 +220,7 @@ class RodUnit(object):
         self.melted = [] #type : list
         # ksp stuff
     def getSummary(self):
-        return self.T.max(), self.T.min(), self.T.mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)*(self.height[1]-self.height[0])
+        return self.T.max(), self.T.min(), self.T.mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)
 
     def saveToFile(self,restartFile): #save the non-Numpy propertyies
         def getindex(rod):
@@ -258,8 +258,8 @@ class RodUnit(object):
         strBuffer = 'title = singleRod\n'
         strBuffer += 'zone I=%d, J=%d, F=point\n'  % (self.nH, self.nR)
         zone = []
-        for j in xrange(0, self.nH):
-            for i in xrange(0, self.nR):
+        for i in xrange(0, self.nR):
+            for j in xrange(0, self.nH):
                 zone.append('%e %e %e\n' % (self.rgrid[i], self.height[j], self.T[j,i] ))
         strBuffer += ''.join(zone)
         return strBuffer

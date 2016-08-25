@@ -155,7 +155,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
         distribution.append(float(_list[1]))
     assert len(distribution) == 52
     distribution = np.array(distribution)
-    distribution /= distribution.max()
+    distribution /= distribution.sum()
     distribution /= 4 # quarter core considered
     for add,rod in rodsMap.items():
         iAss = add[2]
@@ -175,7 +175,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     space = coreHeight / nz
     hgrid = np.linspace(0. + space, coreHeight - space, nz)
     axialDistribution = np.interp(hgrid, height, distribution)
-    axialDistribution /= axialDistribution.max()
+    axialDistribution /= axialDistribution.sum()
     for rod in rods:
         rod.axialPowerFactor = axialDistribution
         rod.height = hgrid
@@ -201,7 +201,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     for line in f:
         _list = pattern.findall(line)
         time.append(float(_list[0]))
-        power.append(float(_list[1])*3150e6) # decay heat power: 3150e6
+        power.append(float(_list[1])* 3.150e9) # decay heat power: 3150e6
     Types.PressureVessle.powerHistory = np.array((time, power))
     del time
     del power
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
     simulator.config_material(rodUnits)
-    initor.set_initial(rodUnits,98,10,373) #start time , delat T, Tfluid
+    initor.set_initial(rodUnits,0.0 ,10,373) #start time , delat T, Tfluid
 
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
     simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)

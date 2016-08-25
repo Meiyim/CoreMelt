@@ -47,7 +47,7 @@ def calGr(dT,L):
     rou = 985.4
     if dT < 1.e-10 or L < 1.e-10:
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
-    return g*beta*dT*(L**3) /((niu/rou)**2)
+    return g*beta*dT*(L**3) /((niu/rou)**2) 
 
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf
@@ -60,9 +60,8 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
         Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
     if mul >=10e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
+    #return 5000.0
     return  Nu * lamda / L
-
-
 
 def ready_to_solve(rods):
     #type: (Types.RodUnits) -> None
@@ -140,7 +139,7 @@ def calc_rod_bound(rod,Tf):
         selfT = rod.T[ih,-1] #outside wall Temp ... no extrapolation now
         deltaT = selfT - Tf
         #print deltaT
-        h = calcBoilHeatTransferRate(calGr(deltaT,L),1,1,L) #assuming deltaT == 10
+        h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
         rod.heatCoef[ih] = h
         #qConvection = h * (selfT - Tf)
         qRadiation = 0.0
@@ -190,7 +189,8 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     for j in xrange(0, rod.nH):
         for i in xrange(0, rod.nRin):
             volumn = rod.rgrid[i] * 2 * math.pi * spaceIn * hspace
-            heatGenerationRate = volumn * rod.qsource[i]
+            heatGenerationRate = volumn * rod.qsource[j]
+            #print heatGenerationRate
             transidentCoef = volumn * rod.material.cpIn * rod.material.rouIn / dt
             row = j*rod.nR + i
             b.setValue(row, heatGenerationRate + transidentCoef * rod.T[j,i], addv = True)  # heatGenerationRate > 0 on right hand side
@@ -250,11 +250,12 @@ def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
             xsol.setValue(row,rod.T[j,i])
 
     # out bound --- 3rd condition
+    outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
     for j in xrange(0, rod.nH):
         i = rod.nR - 1
         row = j*rod.nR + i
-        b.setValue(row, rod.heatCoef[j] * Tf  - rod.qbound[j] ) # qbound move to right hand side ...
-        A.setValue(row, row, rod.heatCoef[j], addv = True)
+        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j] ) # qbound move to right hand side ...
+        A.setValue(row, row, rod.heatCoef[j] * outsideAera, addv = True)
     #upbound --- 2nd condition
     for i in xrange(0, rod.nR):
         j = rod.nH - 1
@@ -340,12 +341,15 @@ def calc_rod_source(rod,nowPower):
     h = (rod.height[1]-rod.height[0])
     volumn = math.pi * rod.radious**2 * h
     rodPower = rod.radialPowerFactor * nowPower
+    #print rodPower, nowPower
     rod.qsource = rod.axialPowerFactor * rodPower / volumn
+    assert rod.qsource.shape[0] == rod.nH
 
 def start(rods,timeLimit, dt):
     #type: (list,float,float) -> None
     print 'starting simulation'
     print 'the first steady status'
+    Types.PressureVessle.timePush(0.0)
     nowWater, nowPower = Types.PressureVessle.now()
     for rod in rods:
         calc_rod_source(rod,nowPower)

@@ -89,8 +89,8 @@ class PETScWrapper:
                 assert False
             return 0. - lam * A / dis
 
-        for j in xrange(0,jmax):
-            for i in xrange(0,imax):
+        for i in xrange(0,imax):
+            for j in xrange(0,jmax):
                 row = self.to1d(i,j)
                 cols=[None,None,None,None] # north, east, south, west
                 cols[0] = self.to1d(i,j+1)
@@ -135,7 +135,7 @@ class PETScWrapper:
             elif idir == 1: #east
                 r = rGrid[i] if i==imax-1 else (rGrid[i+1] + rGrid[i]) /2
                 A   = math.pi * 2 * r * hspace
-                if i<ibound:
+                if i<ibound-1:
                     dis = rInSpace
                     lam = lamdaIn
                 elif i==ibound-1:
@@ -220,7 +220,7 @@ class RodUnit(object):
         self.melted = [] #type : list
         # ksp stuff
     def getSummary(self):
-        return self.T.max(), self.T.min(), self.T.mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)
+        return self.T[:,0].mean(), self.T[:,self.nRin-1].mean(), self.T[:,-1].mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)
 
     def saveToFile(self,restartFile): #save the non-Numpy propertyies
         def getindex(rod):

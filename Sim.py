@@ -60,8 +60,8 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
         Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
     if mul >=10e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
-    return 500.0
-    #return  Nu * lamda / L
+    #return 500.0
+    return  Nu * lamda / L
 
 def ready_to_solve(rods):
     #type: (Types.RodUnits) -> None
@@ -159,7 +159,6 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     A    = fuelTemplate.getMat()
     b    = petsc_rhs.duplicate()
     b.zeroEntries()
-    #A.view()
     xsol = petsc_rhs.duplicate()
     for j in xrange(0, rod.nH):
         for i in xrange(0, rod.nR):
@@ -225,7 +224,6 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     A.assemblyEnd()
     b.assemblyEnd()
     xsol.assemblyEnd()
-    #exit()
 
     petsc_ksp.setInitialGuessNonzero(False)
     petsc_ksp.setOperators(A)
@@ -244,7 +242,7 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
+        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
 
 def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
@@ -326,7 +324,7 @@ def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
         rod.T[j,i] = val
 
     if verbose :
-        print 'rod %d, %d, %d, T max %f, min %f, ave %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
+        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
 
 
 def set_melt_for_black(rod):

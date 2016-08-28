@@ -2,6 +2,7 @@ import numpy as np
 import math
 import copy
 import CMTypes as Types
+from tqdm import tqdm
 from petsc4py import PETSc
 
 fuelTemplate  = None # type: Types.PETScWrapper
@@ -61,7 +62,7 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=10e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    return  Nu * lamda / L
+    return  0.05  * Nu * lamda / L
 
 def ready_to_solve(rods):
     #type: (Types.RodUnits) -> None
@@ -116,8 +117,8 @@ def save_restart_file(rods):
     np.savez('restart.npz',pos=position,T=T,qb=qb, qu = qu, qd = qd,qs=qs, hc = hc, h=h, rg=rg, ap=ap)
 
 
-def calc_rod_bound(rod,Tf):
-    #type: (Types.RodUnit, float) -> None
+def calc_rod_bound(rod,Tf,nowWater):
+    #type: (Types.RodUnit, float, float) -> None
     SIGMA = 5.67e-8
     EPSILONG = 0.7
     RADIOUS = rod.radious
@@ -139,8 +140,9 @@ def calc_rod_bound(rod,Tf):
         selfT = rod.T[ih,-1] #outside wall Temp ... no extrapolation now
         deltaT = selfT - Tf
         #print deltaT
-        h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
-        rod.heatCoef[ih] = h
+        if L < nowWater:
+            h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
+            rod.heatCoef[ih] = h
         #qConvection = h * (selfT - Tf)
         qRadiation = 0.0
         for dir,neighbourRod in rod.neighbour.items():
@@ -242,7 +244,7 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
+        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f' % (rod.address + rod.getSummary())
 
 def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
@@ -324,7 +326,7 @@ def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
         rod.T[j,i] = val
 
     if verbose :
-        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f' % (rod.address + rod.getSummary())
+        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f' % (rod.address + rod.getSummary())
 
 
 def set_melt_for_black(rod):
@@ -359,6 +361,33 @@ def calc_rod_source(rod,nowPower):
     rod.qsource = rod.axialPowerFactor * rodPower / volumn
     assert rod.qsource.shape[0] == rod.nH
 
+def summarize(rods):
+    #type: (list)
+    center = [0,(0,)]
+    qline = [0,(0,)]
+    qbound = [0,(0,)]
+    hcoef = [0,(0,)]
+    #fuelgap = []
+    #cladout = []
+    for rod in rods:
+        ret = rod.getSummary()
+        if ret[0] > center[0]:
+            center[0] = ret[0]
+            center[1] = rod.address
+        if ret[3] > qbound[0]:
+            qbound[0] = ret[3]
+            qbound[1] = rod.address
+        if ret[4] > qline[0]:
+            qline[0] = ret[4]
+            qline[1] = rod.address
+        if ret[5] > hcoef[0]:
+            hcoef[0] = ret[5]
+            hcoef[1] = rod.address
+    print 'max rod temperature %e -[%d, %d, %d]' % ((center[0],)+ center[1])
+    print 'max rod qbound %e -[%d, %d, %d]' % ((qbound[0],)+ qbound[1])
+    print 'max rod qline %e -[%d, %d, %d]' % ((qline[0],)+ qline[1])
+    print 'max rod h-coef %e - [%d, %d, %d]' % ((hcoef[0],) + hcoef[1])
+
 def start(rods,timeLimit, dt):
     #type: (list,float,float) -> None
     print 'starting simulation'
@@ -367,14 +396,17 @@ def start(rods,timeLimit, dt):
     nowWater, nowPower = Types.PressureVessle.now()
     for rod in rods:
         calc_rod_source(rod,nowPower)
-        calc_rod_bound(rod,373)
+        calc_rod_bound(rod,373,nowWater)
     for rod in rods: #update T
         if rod.type is Types.RodType.fuel:
+            #calc_fuel_temperature(rod,373,1.e30, False)
             calc_fuel_temperature(rod,373,1.e30, True)
         else:
+            #calc_other_temperature(rod,373,1.e30, False)
             calc_other_temperature(rod,373,1.e30, True)
     print 'finish calculating steay status'
     #begin time iteration
+    summarize(rods)
     open('rod_1.dat','w').write(rods[0].get2DTec() )
     exit()
     while Types.PressureVessle.currentTime <= timeLimit:
@@ -386,7 +418,7 @@ def start(rods,timeLimit, dt):
         print 'calculating heat souce and temp bound'
         for rod in rods:
             calc_rod_source(rod,nowPower)
-            calc_rod_bound(rod,373) #last parameter is fluid temp
+            calc_rod_bound(rod,373,nowWater) #last parameter is fluid temp
         for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation

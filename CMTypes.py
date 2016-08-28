@@ -220,7 +220,12 @@ class RodUnit(object):
         self.melted = [] #type : list
         # ksp stuff
     def getSummary(self):
-        return self.T[:,0].mean(), self.T[:,self.nRin-1].mean(), self.T[:,-1].mean(), self.qbound.mean(), self.qsource.mean()*math.pi*(self.radious**2)
+        return self.T[:,0].mean(), \
+	       self.T[:,self.nRin-1].mean(),\
+	       self.T[:,-1].mean(), \
+	       self.qbound.mean(), \
+	       self.qsource.mean()*math.pi*(self.radious**2), \
+	       self.heatCoef.mean()
 
     def saveToFile(self,restartFile): #save the non-Numpy propertyies
         def getindex(rod):

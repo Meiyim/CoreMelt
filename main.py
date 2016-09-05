@@ -201,7 +201,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     for line in f:
         _list = pattern.findall(line)
         time.append(float(_list[0]))
-        power.append(float(_list[1])* 2 * 3.150e9) # decay heat power: 3150e6
+        power.append(float(_list[1])* 3.150e9) # decay heat power: 3150e6
     Types.PressureVessle.powerHistory = np.array((time, power))
     del time
     del power

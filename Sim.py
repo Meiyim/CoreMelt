@@ -1,6 +1,6 @@
 import numpy as np
 import math
-import copy
+import sys
 import CMTypes as Types
 from tqdm import tqdm
 from petsc4py import PETSc
@@ -62,7 +62,8 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=10e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    return  0.05  * Nu * lamda / L
+    #return  0.05  * Nu * lamda / L
+    return  Nu * lamda / L
 
 def ready_to_solve(rods):
     #type: (Types.RodUnits) -> None
@@ -143,6 +144,8 @@ def calc_rod_bound(rod,Tf,nowWater):
         if L < nowWater:
             h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
             rod.heatCoef[ih] = h
+        else:
+            rod.heatCoef[ih] = 0.0
         #qConvection = h * (selfT - Tf)
         qRadiation = 0.0
         for dir,neighbourRod in rod.neighbour.items():
@@ -244,7 +247,7 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f' % (rod.address + rod.getSummary())
+        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
 
 def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
@@ -326,7 +329,7 @@ def calc_other_temperature(rod, Tf, dt,verbose=False): #currently  only 2
         rod.T[j,i] = val
 
     if verbose :
-        print 'rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f' % (rod.address + rod.getSummary())
+        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
 
 
 def set_melt_for_black(rod):
@@ -355,7 +358,7 @@ def set_melt_for_fuel(rod): # find the melte part ...
 def calc_rod_source(rod,nowPower):
     #type (Types.RodUnit,float)->(None)
     h = (rod.height[1]-rod.height[0])
-    volumn = math.pi * rod.radious**2 * h
+    volumn = math.pi * rod.inRadious**2 * h
     rodPower = rod.radialPowerFactor * nowPower
     #print rodPower, nowPower
     rod.qsource = rod.axialPowerFactor * rodPower / volumn
@@ -397,35 +400,35 @@ def start(rods,timeLimit, dt):
     for rod in rods:
         calc_rod_source(rod,nowPower)
         calc_rod_bound(rod,373,nowWater)
-    for rod in rods: #update T
+    for rod in tqdm(rods): #update T
         if rod.type is Types.RodType.fuel:
             #calc_fuel_temperature(rod,373,1.e30, False)
-            calc_fuel_temperature(rod,373,1.e30, True)
+            calc_fuel_temperature(rod,373,1.e30, False)
         else:
             #calc_other_temperature(rod,373,1.e30, False)
-            calc_other_temperature(rod,373,1.e30, True)
+            calc_other_temperature(rod,373,1.e30, False)
     print 'finish calculating steay status'
     #begin time iteration
     summarize(rods)
     open('rod_1.dat','w').write(rods[0].get2DTec() )
-    exit()
     while Types.PressureVessle.currentTime <= timeLimit:
-        print 'solving time %f' % Types.PressureVessle.currentTime
         print 'saving...'
         #save_restart_file(rods)
         Types.PressureVessle.timePush(dt)
+        sys.stderr.write('now time %f' % Types.PressureVessle.currentTime)
+        print 'solving time %f' % Types.PressureVessle.currentTime
         nowWater, nowPower = Types.PressureVessle.now()
         print 'calculating heat souce and temp bound'
         for rod in rods:
             calc_rod_source(rod,nowPower)
             calc_rod_bound(rod,373,nowWater) #last parameter is fluid temp
-        for rod in rods: #update T
+        for rod in tqdm(rods): #update T
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation
                 set_melt_for_fuel(rod)
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
                 set_melt_for_black(rod)
-
+        summarize(rods)
     print  'similation done'
 

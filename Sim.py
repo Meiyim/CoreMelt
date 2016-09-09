@@ -21,7 +21,6 @@ def installPETScTemplate(fuel,black,b):
     pc.setType(PETSc.PC.Type.ILU)
     petsc_ksp.setPC(pc)
 
-
 def config_material(rods):
     #type(Types.RodUnits) -> ddNone
     print 'configuring material'
@@ -59,7 +58,6 @@ def calSteamGr(dT,L):
     if dT < 1.e-10 or L < 1.e-10:
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
     return g*beta*dT*(L**3) /((niu/rou)**2) 
-
 
 def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf

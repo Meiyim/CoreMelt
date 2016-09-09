@@ -50,14 +50,41 @@ def calGr(dT,L):
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
     return g*beta*dT*(L**3) /((niu/rou)**2) 
 
+def calSteamGr(dT,L):
+    dT = abs(dT)
+    beta = 0.00268
+    g = 9.8
+    niu = 12.37e-6
+    rou = 0.598
+    if dT < 1.e-10 or L < 1.e-10:
+        print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
+    return g*beta*dT*(L**3) /((niu/rou)**2) 
+
+
+def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
+    mul = Gr*Prf
+    lamda = 0.0250
+    Nu = 0.0
+    if mul<1e3:
+        print 'Gr, Pr didnt confront Correlation\n Pr * Gr == %f!' % mul
+        assert False
+    if 1e3 < mul < 1e10:
+        Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
+    if mul >=10e10:
+        Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
+    #return 500.0
+    #return  0.05  * Nu * lamda / L
+    return  Nu * lamda / L
+
+
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf
     lamda = 0.683
     Nu = 0.0
-    if mul<10e3:
+    if mul<1e3:
         print 'Gr, Pr didnt confront Correlation\n Pr * Gr == %f!' % mul
         assert False
-    if 10e3 < mul < 10e10:
+    if 1e3 < mul < 1e10:
         Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
     if mul >=10e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
@@ -145,7 +172,8 @@ def calc_rod_bound(rod,Tf,nowWater):
             h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
             rod.heatCoef[ih] = h
         else:
-            rod.heatCoef[ih] = 0.0
+            h = calcSteamHeatTransferRate(calSteamGr(deltaT, L - nowWater), 1.003, 1.003, L - nowWater)
+            rod.heatCoef[ih] = h 
         #qConvection = h * (selfT - Tf)
         qRadiation = 0.0
         for dir,neighbourRod in rod.neighbour.items():

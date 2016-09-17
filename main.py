@@ -1,5 +1,6 @@
 # first CXY Core Melt Program
 # 2016.7.22
+from mpi4py import MPI
 import CMTypes as Types
 import numpy as np
 import Sim as simulator
@@ -13,24 +14,19 @@ petsc4py.init(sys.argv)
 def build_rod_units(nr, nz, filename):
     print 'building rods...'
     # type: (int, int, str) -> Types.RodUnit
-    def id_generator():
-        ret = 0
-        while True:
-            yield ret
-            ret += 1
-
     rods = []
     pattern = re.compile(r'\S+')
+    _id = 0;
     for line in open(filename, 'r'):
         _list = pattern.findall(line)
-        _gen = id_generator()
         # should check?
-        newRod = Types.RodUnit(_gen.next(), nz, nr-10, nr,
+        newRod = Types.RodUnit(_id, nz, nr-10, nr,
                                (float(_list[0]), float(_list[1])),              # position
                                (int(_list[2]), int(_list[3]), int(_list[4])),   # hang lie zu
                                 0.00836/2, 0.0095/2,                            # radious
                                 5768                                            #material stuff: gap heat transfer
                                )
+        _id  += 1
         rods.append(newRod)
 
 
@@ -232,10 +228,15 @@ if __name__ == "__main__":
     simulator.config_material(rodUnits)
     initor.set_initial(rodUnits,0.0 ,10,373) #start time , delat T, Tfluid
 
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    rodUnits, bound_array = initor.set_mask(rank, rodUnits)
+    
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
     simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
     #simulator.ready_to_solve(rodUnits)
     #start solve
-    simulator.start(rodUnits, 1000, 1)
+    comm.barrier()
+    simulator.start(rodUnits, bound_array,5000, 1)
     print 'done'
 

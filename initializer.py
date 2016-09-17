@@ -53,7 +53,56 @@ def set_initial(rods,tstart,deltaT,Tf):
         rod.qdown = np.zeros(rod.nR)
         rod.heatCoef = np.zeros(rod.nH)
 
+def set_mask(rank, rods):
+    #type: (int, list) -> None
+    rodLocal = filter(lambda rod: rod.address[2] - 1 == rank, rods)
+    print 'rank %d got %d rods' % (rank, len(rodLocal) )
+    bound_ids = {}
+    for rod in rodLocal:
+        for neigh_rod in rod.neighbour.values():
+            if neigh_rod is None:
+                continue
+            iass = neigh_rod.address[2]
+            if iass - 1 != rank:
+                if bound_ids.get(iass-1) is None:
+                    bound_ids[iass-1] = 1
+                else:
+                    bound_ids[iass-1] += 1 
 
+    print 'rank %d connect to %s' % (rank, bound_ids.keys())
+    assert len(bound_ids) <= 8 and len(bound_ids) >= 1
+    bound_array = {}
+    for bid, width in bound_ids.items():
+        for rod in rodLocal:
+            for neigh_rod in rod.neighbour.values():
+                if neigh_rod is None:
+                    continue
+                if neigh_rod.address[2] - 1 == bid:
+                    sort_id = float(neigh_rod.index + rod.index) + float(abs( neigh_rod.index - rod.index) ) * 1/30000
+                    interface = bound_array.get(bid)
+                    if interface is None:
+                        bound_array[bid] = [(sort_id, neigh_rod.index)]
+                    else:
+                        bound_array[bid].append((sort_id, neigh_rod.index))
+    for bid, ids in bound_array.items():
+        ids = sorted(ids, key = lambda v:v[0]) 
+        ids = map(lambda v: v[1], ids)
+        ids = reduce(lambda x,y : x if y in x else x + [y], [[],] + ids) #delete duplicate
+        print 'interface %d -> %d : width %d' % (rank, bid, len(ids))
+        interface_buffer = np.zeros((len(ids), rods[0].nH))
+        interface_map = {}
+        for i, rod_id in enumerate(ids):
+            interface_map[rod_id] = interface_buffer[i,:]
+        for rod in rodLocal:
+            for neigh_rod in rod.neighbour.values():
+                if neigh_rod is None:
+                    continue
+                if not interface_map.get(neigh_rod.index) is None:
+                    neigh_rod.T = interface_map[neigh_rod.index] 
+                    assert neigh_rod.T.shape == (neigh_rod.nH,)
+        bound_array[bid] = interface_buffer
+    assert len(bound_array) <= 8 and len(bound_array) >= 1
+    return rodLocal, bound_array
 
 def initPetscTemplate(rods):
     #type: (list)->Types.PETScWrapper,Types.PETScWrapper
@@ -66,13 +115,15 @@ def initPetscTemplate(rods):
             blackRodSample = rod
             break
     assert isinstance(fuleRodSample,Types.RodUnit)
-    assert isinstance(blackRodSample,Types.RodUnit)
     assert fuleRodSample.type is Types.RodType.fuel
     fueltemp = Types.PETScWrapper(fuleRodSample.nH*fuleRodSample.nR,fuleRodSample.nR,fuleRodSample.nH)
-    blacktemp = Types.PETScWrapper(blackRodSample.nH*blackRodSample.nR,blackRodSample.nR,blackRodSample.nH)
     fueltemp.fillTemplatefuel(fuleRodSample.nRin, fuleRodSample.material.lamdaIn, fuleRodSample.material.lamdaOut, fuleRodSample.inRadious,
                               fuleRodSample.radious, fuleRodSample.gapHeatRate, fuleRodSample.height[1]-fuleRodSample.height[0], fuleRodSample.rgrid)
-    blacktemp.fillTemplateBlack(blackRodSample.material.lamdaIn,blackRodSample.radious,blackRodSample.height[1]-blackRodSample.height[0], blackRodSample.rgrid)
+    blacktemp = None
+    if blackRodSample is not None:
+        assert isinstance(blackRodSample,Types.RodUnit)
+        blacktemp = Types.PETScWrapper(blackRodSample.nH*blackRodSample.nR,blackRodSample.nR,blackRodSample.nH)
+        blacktemp.fillTemplateBlack(blackRodSample.material.lamdaIn,blackRodSample.radious,blackRodSample.height[1]-blackRodSample.height[0], blackRodSample.rgrid)
 
     return fueltemp, blacktemp, PETSc.Vec().createSeq(fuleRodSample.nH*fuleRodSample.nR)
 

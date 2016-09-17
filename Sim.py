@@ -2,13 +2,17 @@ import numpy as np
 import math
 import sys
 import CMTypes as Types
+import utility as uti
 from tqdm import tqdm
+from mpi4py import MPI
 from petsc4py import PETSc
 
 fuelTemplate  = None # type: Types.PETScWrapper
 blackTemplate = None # type: Types.PETScWrapper
 petsc_rhs          = None # type: PETSc.Vec
 petsc_ksp     = None # type: PETSc.KSP
+comm = MPI.COMM_WORLD
+my_rank = comm.Get_rank()
 
 def installPETScTemplate(fuel,black,b):
     global fuelTemplate,blackTemplate,petsc_rhs,petsc_ksp
@@ -41,13 +45,15 @@ def config_material(rods):
 
 def calGr(dT,L):
     dT = abs(dT)
-    beta = 0.434
+    #beta = 0.434
+    beta = 7.52e-4
     g = 9.8
     niu = 2.82e-4
     rou = 985.4
     if dT < 1.e-10 or L < 1.e-10:
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
-    return g*beta*dT*(L**3) /((niu/rou)**2) 
+    ret = g*beta*dT*(L**3) /((niu/rou)**2) 
+    return  ret
 
 def calSteamGr(dT,L):
     dT = abs(dT)
@@ -64,27 +70,26 @@ def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
     lamda = 0.0250
     Nu = 0.0
     if mul<1e3:
-        print 'Gr, Pr didnt confront Correlation\n Pr * Gr == %f!' % mul
-        assert False
+        pass
+        #uti.mpi_print('Gr, Pr steam  didnt confront Correlation\n Pr * Gr == %f!' , mul, my_rank)
     if 1e3 < mul < 1e10:
         Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
-    if mul >=10e10:
+    if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
     #return  0.05  * Nu * lamda / L
     return  Nu * lamda / L
-
 
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf
     lamda = 0.683
     Nu = 0.0
     if mul<1e3:
-        print 'Gr, Pr didnt confront Correlation\n Pr * Gr == %f!' % mul
+        uti.mpi_print('Gr, Pr didnt confront Correlation\n Pr * Gr == %f!' , mul, my_rank)
         assert False
     if 1e3 < mul < 1e10:
         Nu = 0.6 * (mul)**0.25 * (Prf/Prw) ** (0.25)
-    if mul >=10e10:
+    if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
     #return  0.05  * Nu * lamda / L
@@ -177,7 +182,8 @@ def calc_rod_bound(rod,Tf,nowWater):
         for dir,neighbourRod in rod.neighbour.items():
             if neighbourRod is None:
                 continue
-            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - neighbourRod.T[ih,-1]) * SIGMA * EPSILONG
+            surface = neighbourRod.getSurface()
+            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - surface[ih]) * SIGMA * EPSILONG
         rod.qbound[ih] = qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
@@ -412,49 +418,85 @@ def summarize(rods):
         if ret[5] > hcoef[0]:
             hcoef[0] = ret[5]
             hcoef[1] = rod.address
-    print 'max rod temperature %e -[%d, %d, %d]' % ((center[0],)+ center[1])
-    print 'max rod qbound %e -[%d, %d, %d]' % ((qbound[0],)+ qbound[1])
-    print 'max rod qline %e -[%d, %d, %d]' % ((qline[0],)+ qline[1])
-    print 'max rod h-coef %e - [%d, %d, %d]' % ((hcoef[0],) + hcoef[1])
+    uti.mpi_print('max: T %f, qbound %f, qline %f,hcoef %f -- [%d %d %d]', (center[0], qbound[0], qline[0], hcoef[0]) + center[1], my_rank) 
+    #uti.mpi_print ('max rod temperature %e -[%d, %d, %d]', ((center[0],)+ center[1]), comm_rank )
 
-def start(rods,timeLimit, dt):
-    #type: (list,float,float) -> None
-    print 'starting simulation'
-    print 'the first steady status'
+def syncBoundary(rods, bound_array, verbose=False):
+    assert isinstance(rods, list)
+    assert isinstance(bound_array, dict)
+    assert len(bound_array) <= 8 and len(bound_array) >= 1
+    comm = MPI.COMM_WORLD
+    comm_rank = comm.Get_rank()
+    comm_size = comm.Get_size()
+    diagnal_rank = filter(lambda (rank, arr): arr.shape[0] == 1, bound_array.items())
+    diagnal_rank = map(lambda (r,arr) : r, diagnal_rank)
+    #copy local temp to buffer
+    for rod in rods:
+        for direction, neighbourRod in rod.neighbour.items():
+            if neighbourRod is None:
+                continue
+            that_rank = neighbourRod.address[2] - 1
+            if that_rank in diagnal_rank:
+                rod.neighbour[direction].getSurface()[:] = rod.getSurface()[:]
+            elif that_rank in bound_array.keys():
+                if direction.count('+') + direction.count('-') == 1:
+                    rod.neighbour[direction].getSurface()[:] = rod.getSurface()[:]
+                    
+    for to_rank, bound in  bound_array.items():
+        if to_rank >= comm_size: #to enforce partial calculation...
+            continue
+        print '%d ---> %d' % (comm_rank, to_rank)
+        comm.Bsend(bound, dest = to_rank, tag = comm_rank) 
+    for from_rank, bound in bound_array.items():
+        if from_rank >= comm_size: #to enforce partial calculation...
+            continue
+        print '%d <--- %d' % (comm_rank, from_rank)
+        comm.Recv(bound, source = from_rank, tag = MPI.ANY_TAG)
+
+def start(rods, bound_array, timeLimit, dt):
+    #type: (list, dict,float,float) -> None
+    uti.root_print('%s', 'start simulation', my_rank)
+    uti.root_print('%s', 'the first steady status', my_rank)
+    buff = np.zeros(99999)
+    MPI.Attach_buffer(buff)
     Types.PressureVessle.timePush(0.0)
     nowWater, nowPower = Types.PressureVessle.now()
     for rod in rods:
         calc_rod_source(rod,nowPower)
         calc_rod_bound(rod,373,nowWater)
-    for rod in tqdm(rods): #update T
+    #for rod in tqdm(rods): #update T
+    for rod in rods: #update T
         if rod.type is Types.RodType.fuel:
             #calc_fuel_temperature(rod,373,1.e30, False)
             calc_fuel_temperature(rod,373,1.e30, False)
         else:
             #calc_other_temperature(rod,373,1.e30, False)
             calc_other_temperature(rod,373,1.e30, False)
-    print 'finish calculating steay status'
+    syncBoundary(rods, bound_array)
+    uti.root_print('%s', 'finish calculating steady status', my_rank)
     #begin time iteration
     summarize(rods)
     open('rod_1.dat','w').write(rods[0].get2DTec() )
     while Types.PressureVessle.currentTime <= timeLimit:
-        print 'saving...'
+        uti.root_print('%s', 'saving', my_rank)
         #save_restart_file(rods)
         Types.PressureVessle.timePush(dt)
-        sys.stderr.write('now time %f' % Types.PressureVessle.currentTime)
-        print 'solving time %f' % Types.PressureVessle.currentTime
+        uti.root_print('solving time %f', Types.PressureVessle.currentTime, my_rank)
         nowWater, nowPower = Types.PressureVessle.now()
-        print 'calculating heat souce and temp bound'
+        uti.root_print('%s', 'calculating heat souce and temp bound', my_rank)
         for rod in rods:
             calc_rod_source(rod,nowPower)
             calc_rod_bound(rod,373,nowWater) #last parameter is fluid temp
-        for rod in tqdm(rods): #update T
+        #for rod in tqdm(rods): #update T
+        for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation
                 set_melt_for_fuel(rod)
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
                 set_melt_for_black(rod)
+        syncBoundary(rods, bound_array)
         summarize(rods)
-    print  'similation done'
+    uti.root_print('%s', 'simulation done', my_rank)
+    MPI.Detach_buffer()
 

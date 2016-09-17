@@ -63,7 +63,6 @@ class PETScWrapper:
         #type (int,int,int,float,float,float,float,float,float)
         imax = self.imax
         jmax = self.jmax
-        rspace = rGrid[0] - rGrid[1]
         print 'black rod hegith space %f' % hspace
 
         def giveVal(idir,i,j):
@@ -226,6 +225,11 @@ class RodUnit(object):
 	       self.qbound.mean(), \
 	       self.qsource.mean()*math.pi*(self.radious**2), \
 	       self.heatCoef.mean()
+    def getSurface(self):
+        if len(self.T.shape) == 1:
+            return self.T
+        if len(self.T.shape) == 2:
+            return self.T[:,-1]
 
     def saveToFile(self,restartFile): #save the non-Numpy propertyies
         def getindex(rod):

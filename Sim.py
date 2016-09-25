@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import time
 import sys
 import CMTypes as Types
 import utility as uti
@@ -79,7 +80,7 @@ def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
     #return  0.05  * Nu * lamda / L
-    return  Nu * lamda / L
+    return  0.1 * Nu * lamda / L
 
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf
@@ -94,7 +95,7 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
     #return  0.05  * Nu * lamda / L
-    return  Nu * lamda / L
+    return  0.1 * Nu * lamda / L
 
 def ready_to_solve(rods):
     #type: (Types.RodUnits) -> None
@@ -431,6 +432,7 @@ def syncBoundary(rods, bound_array, mask, verbose=False):
     comm_size = comm.Get_size()
     diagnal_rank = filter(lambda (rank, arr): arr.shape[0] == 1, bound_array.items())
     diagnal_rank = map(lambda (r,arr) : r, diagnal_rank)
+    comm.Barrier()
     #copy local temp to buffer
     for rod in rods:
         for direction, neighbourRod in rod.neighbour.items():
@@ -447,13 +449,14 @@ def syncBoundary(rods, bound_array, mask, verbose=False):
         if to_rank >= comm_size: #to enforce partial calculation...
             continue
         comm.Bsend(bound, dest = to_rank, tag = comm_rank) 
-        print '%d ---> %d : %d' % (comm_rank, to_rank, len(bound))
+        if verbose:
+            print '%d ---> %d : %d' % (comm_rank, to_rank, len(bound))
     for from_rank, bound in bound_array.items():
         if from_rank >= comm_size: #to enforce partial calculation...
             continue
         comm.Recv(bound, source = from_rank, tag = from_rank)
-        print '%d <--- %d : %d' % (comm_rank, from_rank, len(bound))
-    comm.Barrier()
+        if verbose:
+            print '%d <--- %d : %d' % (comm_rank, from_rank, len(bound))
 
 def start(rods, bound_array, mask, timeLimit, dt):
     #type: (list, dict,float,float) -> None
@@ -482,8 +485,9 @@ def start(rods, bound_array, mask, timeLimit, dt):
     #begin time iteration
     summarize(rods)
     open('rod_1.dat','w').write(rods[0].get2DTec() )
+    step_counter = 0
     while Types.PressureVessle.currentTime <= timeLimit:
-        uti.root_print('%s', 'saving', my_rank)
+        uti.root_print('%s... now %s', ('saving', time.strftime('%Y-%m-%d %X', time.localtime())), my_rank)
         #save_restart_file(rods)
         Types.PressureVessle.timePush(dt)
         uti.root_print('solving time %f', Types.PressureVessle.currentTime, my_rank)
@@ -500,8 +504,10 @@ def start(rods, bound_array, mask, timeLimit, dt):
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
                 set_melt_for_black(rod)
-        syncBoundary(rods, bound_array, mask)
+        if step_counter % 10:
+            syncBoundary(rods, bound_array, mask)
         summarize(rods)
+        step_counter += 1
     uti.root_print('%s', 'simulation done', my_rank)
     MPI.Detach_buffer()
 

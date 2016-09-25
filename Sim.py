@@ -3,6 +3,7 @@ import math
 import sys
 import CMTypes as Types
 import utility as uti
+import initializer as initor
 from tqdm import tqdm
 from mpi4py import MPI
 from petsc4py import PETSc
@@ -166,24 +167,24 @@ def calc_rod_bound(rod,Tf,nowWater):
                     'x-y+'  : (0.105, (SPACE-RADIOUS)*math.sqrt(2)  * ROD_SPACE ),
                   }
 
+    selfT = rod.getSurface()
+    deltaT = selfT - Tf
     for ih,L in enumerate(rod.height):
         L+=1.0 #TODO to prevent zero height ...
-        selfT = rod.T[ih,-1] #outside wall Temp ... no extrapolation now
-        deltaT = selfT - Tf
         #print deltaT
         if L < nowWater:
-            h = calcBoilHeatTransferRate(calGr(deltaT,L),1.75,1.75,L) #assuming deltaT == 10
+            h = calcBoilHeatTransferRate(calGr(deltaT[ih],L),1.75,1.75,L) #assuming deltaT == 10
             rod.heatCoef[ih] = h
         else:
-            h = calcSteamHeatTransferRate(calSteamGr(deltaT, L - nowWater), 1.003, 1.003, L - nowWater)
+            h = calcSteamHeatTransferRate(calSteamGr(deltaT[ih], L - nowWater), 1.003, 1.003, L - nowWater)
             rod.heatCoef[ih] = h 
-        #qConvection = h * (selfT - Tf)
+        #qConvection = h * (deltaT[ih])
         qRadiation = 0.0
         for dir,neighbourRod in rod.neighbour.items():
             if neighbourRod is None:
                 continue
             surface = neighbourRod.getSurface()
-            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT - surface[ih]) * SIGMA * EPSILONG
+            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT[ih] - surface[ih]) * SIGMA * EPSILONG
         rod.qbound[ih] = qRadiation
 
     for ir, R in enumerate(rod.rgrid): # currently adiabetic up/down
@@ -200,7 +201,7 @@ def calc_fuel_temperature(rod,Tf,dt,verbose=False): #currently  only 2
     for j in xrange(0, rod.nH):
         for i in xrange(0, rod.nR):
             row = j*rod.nR + i
-            xsol.setValue(row,rod.T[j,i])
+            xsol.setValue(row, rod.T[j,i])
 
     # out bound --- 3rd condition
     outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
@@ -421,7 +422,7 @@ def summarize(rods):
     uti.mpi_print('max: T %f, qbound %f, qline %f,hcoef %f -- [%d %d %d]', (center[0], qbound[0], qline[0], hcoef[0]) + center[1], my_rank) 
     #uti.mpi_print ('max rod temperature %e -[%d, %d, %d]', ((center[0],)+ center[1]), comm_rank )
 
-def syncBoundary(rods, bound_array, verbose=False):
+def syncBoundary(rods, bound_array, mask, verbose=False):
     assert isinstance(rods, list)
     assert isinstance(bound_array, dict)
     assert len(bound_array) <= 8 and len(bound_array) >= 1
@@ -435,30 +436,32 @@ def syncBoundary(rods, bound_array, verbose=False):
         for direction, neighbourRod in rod.neighbour.items():
             if neighbourRod is None:
                 continue
-            that_rank = neighbourRod.address[2] - 1
+            that_rank = initor.get_rank(mask, neighbourRod.address[2])
             if that_rank in diagnal_rank:
-                rod.neighbour[direction].getSurface()[:] = rod.getSurface()[:]
+                neighbourRod.getSurface()[:] = rod.getSurface()[:]
             elif that_rank in bound_array.keys():
-                if direction.count('+') + direction.count('-') == 1:
-                    rod.neighbour[direction].getSurface()[:] = rod.getSurface()[:]
+                #if direction.count('+') + direction.count('-') == 1:
+                neighbourRod.getSurface()[:] = rod.getSurface()[:]
                     
     for to_rank, bound in  bound_array.items():
         if to_rank >= comm_size: #to enforce partial calculation...
             continue
-        print '%d ---> %d' % (comm_rank, to_rank)
         comm.Bsend(bound, dest = to_rank, tag = comm_rank) 
+        print '%d ---> %d : %d' % (comm_rank, to_rank, len(bound))
     for from_rank, bound in bound_array.items():
         if from_rank >= comm_size: #to enforce partial calculation...
             continue
-        print '%d <--- %d' % (comm_rank, from_rank)
-        comm.Recv(bound, source = from_rank, tag = MPI.ANY_TAG)
+        comm.Recv(bound, source = from_rank, tag = from_rank)
+        print '%d <--- %d : %d' % (comm_rank, from_rank, len(bound))
+    comm.Barrier()
 
-def start(rods, bound_array, timeLimit, dt):
+def start(rods, bound_array, mask, timeLimit, dt):
     #type: (list, dict,float,float) -> None
     uti.root_print('%s', 'start simulation', my_rank)
     uti.root_print('%s', 'the first steady status', my_rank)
-    buff = np.zeros(99999)
+    buff = np.zeros(99999999 * len(bound_array.values()))
     MPI.Attach_buffer(buff)
+    comm.Barrier()
     Types.PressureVessle.timePush(0.0)
     nowWater, nowPower = Types.PressureVessle.now()
     for rod in rods:
@@ -472,7 +475,9 @@ def start(rods, bound_array, timeLimit, dt):
         else:
             #calc_other_temperature(rod,373,1.e30, False)
             calc_other_temperature(rod,373,1.e30, False)
-    syncBoundary(rods, bound_array)
+    print 'xxxxxxxxxxxxxxxxxxx %d ' % my_rank
+    syncBoundary(rods, bound_array, mask)
+    print 'xxxxxxxxxxxxxxxxxxx %d ' % my_rank
     uti.root_print('%s', 'finish calculating steady status', my_rank)
     #begin time iteration
     summarize(rods)
@@ -495,7 +500,7 @@ def start(rods, bound_array, timeLimit, dt):
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
                 set_melt_for_black(rod)
-        syncBoundary(rods, bound_array)
+        syncBoundary(rods, bound_array, mask)
         summarize(rods)
     uti.root_print('%s', 'simulation done', my_rank)
     MPI.Detach_buffer()

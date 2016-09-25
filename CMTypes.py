@@ -63,7 +63,6 @@ class PETScWrapper:
         #type (int,int,int,float,float,float,float,float,float)
         imax = self.imax
         jmax = self.jmax
-        print 'black rod hegith space %f' % hspace
 
         def giveVal(idir,i,j):
             A = 0.0

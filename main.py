@@ -2,6 +2,7 @@
 # 2016.7.22
 from mpi4py import MPI
 import CMTypes as Types
+import utility as uti
 import numpy as np
 import Sim as simulator
 import initializer as initor
@@ -9,10 +10,12 @@ import sys
 import re
 import petsc4py
 petsc4py.init(sys.argv)
-
+comm = MPI.COMM_WORLD
+my_rank = comm.Get_rank()
+my_size = comm.Get_size()
 
 def build_rod_units(nr, nz, filename):
-    print 'building rods...'
+    uti.mpi_print('%s', 'building rods...', my_rank )
     # type: (int, int, str) -> Types.RodUnit
     rods = []
     pattern = re.compile(r'\S+')
@@ -137,7 +140,7 @@ def build_rod_units(nr, nz, filename):
 
 
 def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
-    print 'initialing heat rate ...'
+    uti.mpi_print('%s', 'initialing heat rate ...', my_rank )
     f = open(filename, 'r')
     # radial_distribution
     distribution = []
@@ -217,11 +220,22 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
 def clean_rod_units(rods,rodsMap):
     cleaned_rod = filter(lambda rod: rod.type is not Types.RodType.empty, rods)
     return cleaned_rod, None
-
 if __name__ == "__main__":
     nz = 100
     nr = 30
     coreHeight = 3.657
+    mask = {
+        0 : [1,2,3,4,5,6,7,8,
+               9,10,11,12,13,14,15,16],
+        1 : [ 17, 18 ,19, 20, 21, 22, 23, 24, 
+                25, 26, 27, 28, 29, 30, 31],
+        2 : [32, 33, 34, 35, 36, 37, 38, 
+              39, 40,41 ,42 ,43, 44],
+        3: [45, 46, 47, 48, 49, 50,
+              51, 52,]
+
+    }
+    assert len(mask) ==  my_size
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
@@ -230,13 +244,13 @@ if __name__ == "__main__":
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    rodUnits, bound_array = initor.set_mask(rank, rodUnits)
+    rodUnits, bound_array = initor.set_mask(rank, rodUnits, mask)
     
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
     simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
     #simulator.ready_to_solve(rodUnits)
     #start solve
     comm.barrier()
-    simulator.start(rodUnits, bound_array,5000, 1)
+    simulator.start(rodUnits, bound_array, mask, 5000, 1)
     print 'done'
 

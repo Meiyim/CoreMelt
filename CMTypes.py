@@ -28,6 +28,16 @@ class RodType:
     black = 3
     empty = 4
 
+class MeltStatus:
+    def __init__(self,rod):
+        self.melt_mass = 0.0
+        self.rod = rod
+        self.status = []
+    def get_pool_height(self):
+        r = 0.095
+        R = 0.01
+        area = math.pi * r ** 2
+        return R ** 2 - area
 
 class MaterialProterty:
     def __init__(self,name,v1,v2,v3,v4,v5,v6,v7,v8):
@@ -215,52 +225,31 @@ class RodUnit(object):
         self.gapHeatRate = l
         #material
         self.material = None # type: MaterialProterty
-        self.melted = [] #type : list
+        self.melted = MeltStatus(self)
         # ksp stuff
     def getSummary(self):
         return self.T[:,0].mean(), \
-	       self.T[:,self.nRin-1].mean(),\
-	       self.T[:,-1].mean(), \
-	       self.qbound.mean(), \
-	       self.qsource.mean()*math.pi*(self.radious**2), \
-	       self.heatCoef.mean()
+       self.T[:,self.nRin-1].mean(),\
+       self.T[:,-1].mean(), \
+       self.qbound.mean(), \
+       self.qsource.mean()*math.pi*(self.radious**2), \
+       self.heatCoef.mean(), \
+       self.melted.melt_mass 
+
+    def get_volumn(self, j, i):
+        dr = 0.0
+        if i < self.nRin:
+            dr = self.rgrid[1] - self.rgrid[0]
+        else:
+            dr = self.rgrid[-1] - self.rgrid[-2]
+        volumn = self.rgrid[i] * 2 * math.pi * (dr) * (self.height[1] - self.height[0])
+        return  volumn
     def getSurface(self):
         if len(self.T.shape) == 1:
             return self.T
         if len(self.T.shape) == 2:
             return self.T[:,-1]
 
-    def saveToFile(self,restartFile): #save the non-Numpy propertyies
-        def getindex(rod):
-            if rod is None:
-                return -1
-            else:
-                return rod.index
-        bytes = struct.pack('15i',self.index,
-                            self.address[0],self.address[1],self.address[2],
-                            self.nH, self.nR, self.nRin,
-                            getindex(self.neighbour['xy+']),
-                            getindex(self.neighbour['x+y+']),
-                            getindex(self.neighbour['x+y']),
-                            getindex(self.neighbour['x+y-']),
-                            getindex(self.neighbour['xy-']),
-                            getindex(self.neighbour['x-y-']),
-                            getindex(self.neighbour['x-y']),
-                            getindex(self.neighbour['x-y+']),
-                            )
-        restartFile.write(bytes)
-        bytes = struct.pack('10d',self.radialPowerFactor,
-                                 self.inRadious,
-                                 self.radious,
-                                 self.gapHeatRate ,
-                                 self.material.lamdaIn,
-                                 self.material.lamdaOut,
-                                 self.material.rouIn,
-                                 self.material.rouOut,
-                                 self.material.cpIn,
-                                 self.material.cpOut
-                            )
-        restartFile.write(bytes)
 
     def get2DTec(self):
         strBuffer = 'title = singleRod\n'

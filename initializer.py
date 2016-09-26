@@ -1,9 +1,13 @@
 import CMTypes as Types
 import Sim as simulator
 import utility as uti
+from mpi4py import MPI
 from petsc4py import PETSc
 import math
 import numpy as np
+comm = MPI.COMM_WORLD
+my_rank = comm.Get_rank()
+my_size = comm.Get_size()
 
 
 def set_initial(rods,tstart,deltaT,Tf):
@@ -56,7 +60,7 @@ def set_initial(rods,tstart,deltaT,Tf):
 
 def get_rank(mask, iass):
     for  rank, ass_arr in mask.items():
-        if  iass in ass_arr:
+        if  iass in ass_arr and rank < my_size:
             return rank
     return -1
 
@@ -82,7 +86,7 @@ def set_mask(rank, rods, mask):
                     bound_ids[that_rank] += 1 
 
     print 'rank %d connect to %s' % (rank, bound_ids.keys())
-    assert len(bound_ids) <= 8 and len(bound_ids) >= 1
+    assert len(bound_ids) <= 8 and len(bound_ids) >= 0
     bound_array = {}
     for bid, width in bound_ids.items():
         for rod in rodLocal:
@@ -102,7 +106,7 @@ def set_mask(rank, rods, mask):
         ids = sorted(ids, key = lambda v:v[0]) 
         ids = map(lambda v: v[1], ids)
         #ids = reduce(lambda x,y : x if y in x else x + [y], [[],] + ids) #delete duplicate
-        #print 'interface %d -> %d : width %d' % (rank, bid, len(ids))
+        print 'interface %d -> %d : width %d' % (rank, bid, len(ids))
         interface_buffer = np.zeros((len(ids), rods[0].nH))
         interface_map = {}
         for i, rod_id in enumerate(ids):
@@ -116,7 +120,7 @@ def set_mask(rank, rods, mask):
                     assert neigh_rod.T.shape == (neigh_rod.nH,)
                     assert neigh_rod.address[2] not in mask.get(rank)
         bound_array[bid] = interface_buffer
-    assert len(bound_array) <= 8 and len(bound_array) >= 1
+    assert len(bound_array) <= 8 and len(bound_array) >= 0
     #uti.root_print("%s", str(bound_array), rank);
     return rodLocal, bound_array
 

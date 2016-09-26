@@ -224,6 +224,11 @@ if __name__ == "__main__":
     nz = 100
     nr = 30
     coreHeight = 3.657
+'''
+    mask = {}
+    for i in xrange(1,53):
+        mask[i] = i
+'''
     mask = {
         0 : [1,2,3,4,5,6,7,8],
         1 : [9,10,11,12,13,14,15,16],
@@ -235,7 +240,7 @@ if __name__ == "__main__":
               51, 52,]
 
     }
-    assert len(mask) ==  my_size
+    #assert len(mask) ==  my_size
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)

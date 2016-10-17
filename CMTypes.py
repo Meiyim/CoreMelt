@@ -228,9 +228,9 @@ class RodUnit(object):
         self.melted = MeltStatus(self)
         # ksp stuff
     def getSummary(self):
-        return self.T[:,0].mean(), \
-       self.T[:,self.nRin-1].mean(),\
-       self.T[:,-1].mean(), \
+        return self.T[:,0].max(), \
+       self.T[:,self.nRin-1].max(),\
+       self.T[:,-1].max(), \
        self.qbound.mean(), \
        self.qsource.mean()*math.pi*(self.radious**2), \
        self.heatCoef.mean(), \
@@ -261,7 +261,7 @@ class RodUnit(object):
 		if (j,i) in self.melted.status:
 		    status = 1
 		    self.T[j,i] = 0.0
-                zone.append('%e %e %e %d\n' % (self.rgrid[i], self.height[j], self.T[j,i], status ))
+        zone.append('%e %e %e %d\n' % (self.rgrid[i], self.height[j], self.T[j,i], status ))
         strBuffer += ''.join(zone)
         return strBuffer
 

@@ -43,7 +43,7 @@ class MaterialProterty:
     def __init__(self,name,v1,v2,v3,v4,v5,v6,v7,v8):
         self.name = name
         self.lamdaIn = v1
-        self.lamdaOut = v2
+        self.lamdaOut = v2 
         self.rouIn = v3
         self.rouOut = v4
         self.cpIn = v5
@@ -257,7 +257,11 @@ class RodUnit(object):
         zone = []
         for i in xrange(0, self.nR):
             for j in xrange(0, self.nH):
-                zone.append('%e %e %e\n' % (self.rgrid[i], self.height[j], self.T[j,i] ))
+		status = 0
+		if (j,i) in self.melted.status:
+		    status = 1
+		    self.T[j,i] = 0.0
+                zone.append('%e %e %e %d\n' % (self.rgrid[i], self.height[j], self.T[j,i], status ))
         strBuffer += ''.join(zone)
         return strBuffer
 
@@ -303,7 +307,8 @@ class RodUnit(object):
         # print vars
         vars = np.zeros(self.nH)
         for i,temperatures in enumerate(self.T):
-           vars[i] = temperatures.mean()
+	   melted_nodes = len(filter(lambda (jnode,inode): jnode == i, self.melted.status))
+           vars[i] = temperatures.mean() if melted_nodes < 15 else -1.0
         strBuffer += ' '.join(map(lambda (i,val):str(val) if i%5!=4 else str(val) + '\n',enumerate(vars)))
         strBuffer += '\n'
         # print connectivities

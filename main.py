@@ -224,11 +224,11 @@ if __name__ == "__main__":
     nz = 100
     nr = 30
     coreHeight = 3.657
-'''
     mask = {}
-    for i in xrange(1,53):
-        mask[i] = i
-'''
+    for i in xrange(0,52):
+        mask[i] = [i + 1]
+
+    '''
     mask = {
         0 : [1,2,3,4,5,6,7,8],
         1 : [9,10,11,12,13,14,15,16],
@@ -238,8 +238,8 @@ if __name__ == "__main__":
         5 : [39, 40,41 ,42 ,43, 44],
         6 : [45, 46, 47, 48, 49, 50,
               51, 52,]
-
     }
+    '''
     #assert len(mask) ==  my_size
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
@@ -256,6 +256,12 @@ if __name__ == "__main__":
     #simulator.ready_to_solve(rodUnits)
     #start solve
     comm.barrier()
-    simulator.start(rodUnits, bound_array, mask, 5000, 1)
+    try:
+    	simulator.start(rodUnits, bound_array, mask, 5000, 1)
+    except Exception as e:
+	print e
+	import traceback
+    	traceback.print_exc()
+	comm.Abort()	
     print 'done'
 

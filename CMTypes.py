@@ -51,7 +51,6 @@ class MaterialProterty:
         self.meltingPointIn = v7
         self.meltingPointOut = v8
 
-
 class PETScWrapper:
     def __init__(self,n,imax,jmax):
         self.A = PETSc.Mat().createAIJ([n,n],nnz = 5)
@@ -244,6 +243,10 @@ class RodUnit(object):
             dr = self.rgrid[-1] - self.rgrid[-2]
         volumn = self.rgrid[i] * 2 * math.pi * (dr) * (self.height[1] - self.height[0])
         return  volumn
+    
+    def get_out_area(self):
+        return (self.height[1] - self.height[0]) * math.pi * 2 * self.radious)
+
     def getSurface(self):
         if len(self.T.shape) == 1:
             return self.T
@@ -322,4 +325,10 @@ class RodUnit(object):
             strBuffer += '\n'
 
         return strBuffer
+
+class Constant():
+    SIGMA = 5.67e-8
+    EPSILONG = 0.7
+    RADIO_ANGLE_AMPLIFIER = 10
+
 

@@ -240,6 +240,9 @@ if __name__ == "__main__":
               51, 52,]
     }
     '''
+    #MPI things
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
     #assert len(mask) ==  my_size
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
@@ -247,8 +250,6 @@ if __name__ == "__main__":
     simulator.config_material(rodUnits)
     initor.set_initial(rodUnits,0.0 ,10,373) #start time , delat T, Tfluid
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
     rodUnits, bound_array = initor.set_mask(rank, rodUnits, mask)
     
     fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)

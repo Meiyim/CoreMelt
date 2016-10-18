@@ -140,13 +140,11 @@ def load_restart_file(rods):
 
 def calc_rod_bound(rod,Tf,nowWater):
     #type: (Types.RodUnit, float, float) -> None
-    SIGMA = 5.67e-8
-    EPSILONG = 0.7
     RADIOUS = rod.radious
     SPACE = 0.016
     ROD_SPACE = rod.height[1] - rod.height[0]
     Xangle_Area = {
-                    'xy+'   : (0.145, RADIOUS*2                     * ROD_SPACE ),
+                    'xy+'   : (0.145, RADIOUS*2                     * ROD_SPACE ), #angle coef, surface 
                     'x+y+'  : (0.105, (SPACE-RADIOUS)*math.sqrt(2)  * ROD_SPACE ),
                     'x+y'   : (0.145, RADIOUS*2                     * ROD_SPACE ),
                     'x+y-'  : (0.105, (SPACE-RADIOUS)*math.sqrt(2)  * ROD_SPACE ),
@@ -181,8 +179,11 @@ def calc_rod_bound(rod,Tf,nowWater):
                 continue
             surface = neighbourRod.getSurface()
             if L >= nowWater:
-                rod.qbound[ih] += 0.01 * h * area * (surface[ih] - selfT[ih]) # neighbour considered
-            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (surface[ih] - selfT[ih]) * SIGMA * EPSILONG
+                rod.qbound[ih] += 0.01 * h * area * (surface[ih] - selfT[ih]) # neighbour  convective considered
+            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (surface[ih] ** 4 - selfT[ih] ** 4) * 
+                          Types.Constant.SIGMA * 
+                          Types.Constant.EPSILONG * 
+                          Types.Constant.RADIO_ANGLE_AMPLIFIER
         rod.qbound[ih] += qRadiation
         #uti.mpi_print('qbound %d %e', (ih, rod.qbound[ih]), my_rank)
         #assert isinstance(rod.qbound[ih], float)
@@ -192,121 +193,14 @@ def calc_rod_bound(rod,Tf,nowWater):
         rod.qup[ir] = 0.
         rod.qdown[ir] = 0.
 
-def calc_fuel_temperature(rod,Tf,dt, waterlevel,verbose=False): #currently  only 2
-    #type: (Types.RodUnit) -> None
-    A    = fuelTemplate.getMat()
-    b    = petsc_rhs.duplicate()
-    b.zeroEntries()
-    xsol = petsc_rhs.duplicate()
-    for j in xrange(0, rod.nH):
-        for i in xrange(0, rod.nR):
-            row = j*rod.nR + i
-            xsol.setValue(row, rod.T[j,i])
+def build_basic_temperature(A, b, dt, rod):
     # out bound --- 3rd condition
     outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
     surface = rod.getSurface()
     for j in xrange(0, rod.nH):
         i = rod.nR - 1
         row = j*rod.nR + i
-        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j] ) # qbound move to right hand side ...
-        A.setValue(row, row, rod.heatCoef[j] * outsideAera, addv = True)
-    #upbound --- 2nd condition
-    for i in xrange(0, rod.nR):
-        j = rod.nH - 1
-        row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qup[i] ,addv = True) # qflux move to right hand side
-    #down bound --- 2nd condition
-    for i in xrange(0, rod.nR):
-        j = 0
-        row = j*rod.nR + i
-        b.setValue(row, 0. - rod.qdown[i], addv = True) # q flux move to right hand side
-    #set body source
-    spaceIn = rod.rgrid[1] - rod.rgrid[0]
-    spaceOut = rod.rgrid[-1] - rod.rgrid[-2]
-    hspace  = rod.height[1] - rod.height[0]
-    for j in xrange(0, rod.nH):
-        for i in xrange(0, rod.nRin):
-            volumn = rod.rgrid[i] * 2 * math.pi * spaceIn * hspace
-            heatGenerationRate = volumn * rod.qsource[j]
-            #print heatGenerationRate
-            transidentCoef = volumn * rod.material.cpIn * rod.material.rouIn / dt
-            row = j*rod.nR + i
-            b.setValue(row, heatGenerationRate + transidentCoef * rod.T[j,i], addv = True)  # heatGenerationRate > 0 on right hand side
-            A.setValue(row,row, transidentCoef, addv = True )#transient  term
-    for j in xrange(0, rod.nH):
-        for i in xrange(rod.nRin, rod.nR):
-            volumn = rod.rgrid[i] * 2 * math.pi * spaceOut * hspace
-            transidentCoef = volumn * rod.material.cpOut * rod.material.rouOut / dt
-            row = j * rod.nR + i
-            b.setValue(row, transidentCoef * rod.T[j,i], addv = True)
-            A.setValue(row, row, transidentCoef, addv =  True)
-
-    A.assemblyBegin()
-    b.assemblyBegin()
-    xsol.assemblyBegin()
-    A.assemblyEnd()
-    b.assemblyEnd()
-    xsol.assemblyEnd()
-    #block melted part
-    set_melted = False
-    for melted_part in rod.melted.status:
-        set_melted = True
-        neighbour = [list(melted_part), list(melted_part), list(melted_part), list(melted_part)]
-        neighbour[0][0] += 1
-        neighbour[1][1] += 1
-        neighbour[2][0] -= 1
-        neighbour[3][1] -= 1
-        neighbour = filter(lambda val: (0 <= val[0] < rod.nH) and (0 <= val[1] < rod.nR), neighbour)
-        neighbour = map(lambda (j,i): j*rod.nR + i ,neighbour)
-        row = melted_part[0] * rod.nR + melted_part[1]
-        A.setValue(row,row,1.,addv = False) # diagnal == 1
-        vals = [0.] * len(neighbour) 
-        A.setValues(row, neighbour, vals, addv = False) # clear off-diagnal
-        A.setValues(neighbour, row, vals, addv = False)
-        b.setValue(row, 0., addv = False) # right hand side
-    if set_melted :
-        A.assemblyBegin()
-        b.assemblyBegin()
-        A.assemblyEnd()
-        b.assemblyEnd()
-    
-    petsc_ksp.setInitialGuessNonzero(False)
-    petsc_ksp.setOperators(A)
-    petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
-    petsc_ksp.solve(b,xsol)
-
-    if petsc_ksp.getConvergedReason() < 0:
-        raise ValueError, 'iteration not converged in %d-%d-%d' % rod.address
-    else:
-        if verbose:
-            print 'iteration converged in %d step' % petsc_ksp.getIterationNumber()
-
-    raw_arr = xsol.getArray()
-    for row,val in enumerate(raw_arr):
-        j = row / rod.nR
-        i = row % rod.nR
-        rod.T[j,i] = val
-    if verbose:
-        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
-
-def calc_other_temperature(rod, Tf, dt, waterlevel, verbose=False): #currently  only 2
-    #type: (Types.RodUnit) -> None
-    A    = blackTemplate.getMat()
-    b    = petsc_rhs.duplicate()
-    b.zeroEntries()
-    xsol = petsc_rhs.duplicate()
-    for j in xrange(0, rod.nH):
-        for i in xrange(0, rod.nR):
-            row = j*rod.nR + i
-            xsol.setValue(row,rod.T[j,i])
-
-    # out bound --- 3rd condition
-    outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
-    surface = rod.getSurface()
-    for j in xrange(0, rod.nH):
-        i = rod.nR - 1
-        row = j*rod.nR + i
-        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j] ) # qbound move to right hand side ...
+        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j], addv = True ) # qbound move to right hand side ...
         A.setValue(row, row, rod.heatCoef[j] * outsideAera, addv = True)
     #upbound --- 2nd condition
     for i in xrange(0, rod.nR):
@@ -330,14 +224,7 @@ def calc_other_temperature(rod, Tf, dt, waterlevel, verbose=False): #currently  
             b.setValue(row, transidentCoef * rod.T[j,i], addv = True)
             A.setValue(row, row, transidentCoef, addv =  True)
 
-    A.assemblyBegin()
-    b.assemblyBegin()
-    xsol.assemblyBegin()
-    A.assemblyEnd()
-    b.assemblyEnd()
-    xsol.assemblyEnd()
-
-    #block melted part
+def build_melt_temperature(A, b, rod):
     set_melted = False
     for melted_part in rod.melted.status:
         set_melted = True
@@ -350,7 +237,7 @@ def calc_other_temperature(rod, Tf, dt, waterlevel, verbose=False): #currently  
         neighbour = map(lambda (j,i): j*rod.nR + i ,neighbour)
         row = melted_part[0] * rod.nR + melted_part[1]
         A.setValue(row,row,1.,addv = False) # diagnal == 1
-        vals = [0.] * len(neighbour)
+        vals = [0.] * len(neighbour) 
         A.setValues(row, neighbour, vals, addv = False) # clear off-diagnal
         A.setValues(neighbour, row, vals, addv = False)
         b.setValue(row, 0., addv = False) # right hand side
@@ -360,17 +247,85 @@ def calc_other_temperature(rod, Tf, dt, waterlevel, verbose=False): #currently  
         A.assemblyEnd()
         b.assemblyEnd()
 
-    petsc_ksp.setOperators(A)
-    petsc_ksp.setTolerances(rtol=1.e-6,max_it=1000)
-    petsc_ksp.solve(b,xsol)
-    raw_arr = xsol.getArray()
+def petsc_solve(A, b, ksp):
+    ksp.setInitialGuessNonzero(False)
+    ksp.setOperators(A)
+    ksp.setTolerances(rtol=1.e-6,max_it=1000)
+    ksp.solve(b,xsol)
 
-    #check if converge
-    if petsc_ksp.getConvergedReason() < 0:
-        raise ValueError, 'iteration not converged in %d-%d-%d' % rod.address
+    if ksp.getConvergedReason() < 0:
+        raise ValueError, 'iteration not converged'
     else:
         if verbose:
-            print 'iteration converged in %d step' % petsc_ksp.getIterationNumber()
+            print 'iteration converged in %d step' % ksp.getIterationNumber()
+    return xsol.getArray()
+
+def calc_fuel_temperature(rod,Tf,dt, verbose=False): #currently  only 2
+    #type: (Types.RodUnit) -> None
+    A    = fuelTemplate.getMat()
+    b    = petsc_rhs.duplicate()
+    b.zeroEntries()
+    xsol = petsc_rhs.duplicate()
+    for j in xrange(0, rod.nH):
+        for i in xrange(0, rod.nR):
+            row = j*rod.nR + i
+            xsol.setValue(row, rod.T[j,i])
+    build_basic_temperature(A, b, dt, rod)
+    #set body source
+    spaceIn = rod.rgrid[1] - rod.rgrid[0]
+    spaceOut = rod.rgrid[-1] - rod.rgrid[-2]
+    hspace  = rod.height[1] - rod.height[0]
+    for j in xrange(0, rod.nH):
+        for i in xrange(0, rod.nRin):
+            volumn = rod.rgrid[i] * 2 * math.pi * spaceIn * hspace
+            heatGenerationRate = volumn * rod.qsource[j]
+            #print heatGenerationRate
+            transidentCoef = volumn * rod.material.cpIn * rod.material.rouIn / dt
+            row = j*rod.nR + i
+            b.setValue(row, heatGenerationRate + transidentCoef * rod.T[j,i], addv = True)  # heatGenerationRate > 0 on right hand side
+            A.setValue(row,row, transidentCoef, addv = True )#transient  term
+
+    A.assemblyBegin()
+    b.assemblyBegin()
+    xsol.assemblyBegin()
+    A.assemblyEnd()
+    b.assemblyEnd()
+    xsol.assemblyEnd()
+    #block melted part
+    build_melt_temperature(A, b, rod)
+
+    raw_arr = petsc_solve(A, b, petsc_ksp)
+    for row,val in enumerate(raw_arr):
+        j = row / rod.nR
+        i = row % rod.nR
+        rod.T[j,i] = val
+    if verbose:
+        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
+
+
+   
+def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
+    #type: (Types.RodUnit) -> None
+    A    = blackTemplate.getMat()
+    b    = petsc_rhs.duplicate()
+    b.zeroEntries()
+    xsol = petsc_rhs.duplicate()
+    for j in xrange(0, rod.nH):
+        for i in xrange(0, rod.nR):
+            row = j*rod.nR + i
+            xsol.setValue(row,rod.T[j,i])
+    build_basic_temperature(A, b, rod, dt)
+    A.assemblyBegin()
+    b.assemblyBegin()
+    xsol.assemblyBegin()
+    A.assemblyEnd()
+    b.assemblyEnd()
+    xsol.assemblyEnd()
+
+    #block melted part
+    build_melt_temperature(A, b, rod)
+
+    raw_arr = petsc_solve(A, b, petsc_ksp)
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
@@ -531,10 +486,10 @@ def start(rods, bound_array, mask, timeLimit, dt):
         #for rod in tqdm(rods): #update T
         for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
-                calc_fuel_temperature(rod, 373, dt, nowWater)   #a PETSc impementation
+                calc_fuel_temperature(rod, 373, dt )   #a PETSc impementation
                 set_melt_for_fuel(rod)
             else:
-                calc_other_temperature(rod, 373, dt, nowWater)  #a PETSc impementation
+                calc_other_temperature(rod, 373, dt)  #a PETSc impementation
                 set_melt_for_black(rod)
         if step_counter % 10 == 0:
             syncBoundary(rods, bound_array, mask)

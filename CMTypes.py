@@ -228,8 +228,8 @@ class RodUnit(object):
         # ksp stuff
     def getSummary(self):
         return self.T[:,0].max(), \
-       self.T[:,self.nRin-1].max(),\
-       self.T[:,-1].max(), \
+       self.T[:,-1].max(),\
+       self.T[:,0].max(), \
        self.qbound.mean(), \
        self.qsource.mean()*math.pi*(self.radious**2), \
        self.heatCoef.mean(), \
@@ -245,7 +245,7 @@ class RodUnit(object):
         return  volumn
     
     def get_out_area(self):
-        return (self.height[1] - self.height[0]) * math.pi * 2 * self.radious)
+        return (self.height[1] - self.height[0]) * math.pi * 2 * self.radious
 
     def getSurface(self):
         if len(self.T.shape) == 1:
@@ -327,8 +327,12 @@ class RodUnit(object):
         return strBuffer
 
 class Constant():
-    SIGMA = 5.67e-8
-    EPSILONG = 0.7
+    SIGMA                 = 5.67e-8
+    EPSILONG              = 0.7
     RADIO_ANGLE_AMPLIFIER = 10
-
+    ROD_IN_RADIOU         = 0.00836/2
+    ROD_OUT_RADIOUS       = 0.0095/2
+    BARREL_IN_RADIOUS     = 3.53
+    BARREL_OUT_RADIOUS    = 3.58
+    FLUID_TEMP            = 373
 

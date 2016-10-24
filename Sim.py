@@ -15,6 +15,7 @@ petsc_rhs          = None # type: PETSc.Vec
 petsc_ksp     = None # type: PETSc.KSP
 comm = MPI.COMM_WORLD
 my_rank = comm.Get_rank()
+my_size = comm.Get_size()
 
 def installPETScTemplate(fuel,black,b):
     global fuelTemplate,blackTemplate,petsc_rhs,petsc_ksp
@@ -29,7 +30,7 @@ def installPETScTemplate(fuel,black,b):
 
 def config_material(rods):
     #type(Types.RodUnits) -> ddNone
-    print 'configuring material'
+    uti.mpi_print('%s', 'configuring material', my_rank)
     for rod in rods:
         if rod.type is Types.RodType.black or rod.type is Types.RodType.gray:
             rod.material = Types.MaterialProterty('gray/black',25,25,7020,7020,835,835,1600,1600)
@@ -179,10 +180,10 @@ def calc_rod_bound(rod,Tf,nowWater):
                 continue
             surface = neighbourRod.getSurface()
             if L >= nowWater:
-                rod.qbound[ih] += 0.01 * h * area * (surface[ih] - selfT[ih]) # neighbour  convective considered
-            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (surface[ih] ** 4 - selfT[ih] ** 4) * 
-                          Types.Constant.SIGMA * 
-                          Types.Constant.EPSILONG * 
+                rod.qbound[ih] += 0.01 * h *  (selfT[ih] - surface[ih] ) # neighbour  convective considered
+            qRadiation += Xangle_Area[dir][1] * Xangle_Area[dir][0] * (selfT[ih] ** 4 - surface[ih] ** 4 ) * \
+                          Types.Constant.SIGMA * \
+                          Types.Constant.EPSILONG * \
                           Types.Constant.RADIO_ANGLE_AMPLIFIER
         rod.qbound[ih] += qRadiation
         #uti.mpi_print('qbound %d %e', (ih, rod.qbound[ih]), my_rank)
@@ -193,14 +194,14 @@ def calc_rod_bound(rod,Tf,nowWater):
         rod.qup[ir] = 0.
         rod.qdown[ir] = 0.
 
-def build_basic_temperature(A, b, dt, rod):
+def build_basic_temperature(A, b, dt, Tf, rod):
     # out bound --- 3rd condition
     outsideAera = math.pi * 2 * rod.radious * ( rod.height[1] - rod.height[0] )
     surface = rod.getSurface()
     for j in xrange(0, rod.nH):
         i = rod.nR - 1
         row = j*rod.nR + i
-        b.setValue(row, rod.heatCoef[j] * Tf * outsideAera  - rod.qbound[j], addv = True ) # qbound move to right hand side ...
+        b.setValue(row, (rod.heatCoef[j] * Tf  - rod.qbound[j] ) * outsideAera, addv = True ) # qbound move to right hand side ...
         A.setValue(row, row, rod.heatCoef[j] * outsideAera, addv = True)
     #upbound --- 2nd condition
     for i in xrange(0, rod.nR):
@@ -212,7 +213,6 @@ def build_basic_temperature(A, b, dt, rod):
         j = 0
         row = j*rod.nR + i
         b.setValue(row, 0. - rod.qdown[i], addv = True) # q flux move to right hand side
-
     rspace = rod.rgrid[1] - rod.rgrid[0]
     hspace = rod.height[1] - rod.height[0]
     #apply transient term
@@ -247,17 +247,16 @@ def build_melt_temperature(A, b, rod):
         A.assemblyEnd()
         b.assemblyEnd()
 
-def petsc_solve(A, b, ksp):
-    ksp.setInitialGuessNonzero(False)
+def petsc_solve(A, b, xsol, ksp):
+    ksp.setInitialGuessNonzero(True)
     ksp.setOperators(A)
-    ksp.setTolerances(rtol=1.e-6,max_it=1000)
-    ksp.solve(b,xsol)
+    ksp.setTolerances(rtol=1.e-6, max_it=1000)
+    ksp.solve(b, xsol)
 
     if ksp.getConvergedReason() < 0:
         raise ValueError, 'iteration not converged'
-    else:
-        if verbose:
-            print 'iteration converged in %d step' % ksp.getIterationNumber()
+    #else:
+       # print 'iteration converged in %d step' % ksp.getIterationNumber()
     return xsol.getArray()
 
 def calc_fuel_temperature(rod,Tf,dt, verbose=False): #currently  only 2
@@ -270,7 +269,7 @@ def calc_fuel_temperature(rod,Tf,dt, verbose=False): #currently  only 2
         for i in xrange(0, rod.nR):
             row = j*rod.nR + i
             xsol.setValue(row, rod.T[j,i])
-    build_basic_temperature(A, b, dt, rod)
+    build_basic_temperature(A, b, dt, Tf, rod)
     #set body source
     spaceIn = rod.rgrid[1] - rod.rgrid[0]
     spaceOut = rod.rgrid[-1] - rod.rgrid[-2]
@@ -294,15 +293,13 @@ def calc_fuel_temperature(rod,Tf,dt, verbose=False): #currently  only 2
     #block melted part
     build_melt_temperature(A, b, rod)
 
-    raw_arr = petsc_solve(A, b, petsc_ksp)
+    raw_arr = petsc_solve(A, b, xsol, petsc_ksp)
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
-
-
+        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
    
 def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
@@ -314,7 +311,7 @@ def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
         for i in xrange(0, rod.nR):
             row = j*rod.nR + i
             xsol.setValue(row,rod.T[j,i])
-    build_basic_temperature(A, b, rod, dt)
+    build_basic_temperature(A, b, dt, Tf, rod)
     A.assemblyBegin()
     b.assemblyBegin()
     xsol.assemblyBegin()
@@ -325,32 +322,19 @@ def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
     #block melted part
     build_melt_temperature(A, b, rod)
 
-    raw_arr = petsc_solve(A, b, petsc_ksp)
+    raw_arr = petsc_solve(A, b, xsol, petsc_ksp)
     for row,val in enumerate(raw_arr):
         j = row / rod.nR
         i = row % rod.nR
         rod.T[j,i] = val
 
     if verbose :
-        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
+        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
 
-
-def set_melt_for_black(rod):
+def set_melt(rod): # find the melte part ...
     #type (Types.RodUnit) -> None
-    CRITICAL = 2000
-    for j in xrange(0,rod.nH):
-        for i in xrange(0,rod.nR):
-            if (j,i) in rod.melted.status:
-                continue
-            if rod.T[j,i] > CRITICAL:  #fuel cell part
-                rod.melted.melt_mass += rod.get_volumn(j, i) * rod.material.rouIn
-                rod.T[j, i] = 0.0
-                rod.melted.status.append((j,i))
-
-def set_melt_for_fuel(rod): # find the melte part ...
-    #type (Types.RodUnit) -> None
-    FUEL_CRITICAL = 3000
-    CLAD_CRITICAL = 2000
+    FUEL_CRITICAL = rod.material.meltingPointIn
+    CLAD_CRITICAL = rod.material.meltingPointOut
     for j in xrange(0,rod.nH):
         for i in xrange(0,rod.nR):
             if (j,i) in rod.melted.status:
@@ -410,16 +394,17 @@ def summarize(now, rods):
     return hot_rod
     #uti.mpi_print ('max rod temperature %e -[%d, %d, %d]', ((center[0],)+ center[1]), comm_rank )
 
-def syncBoundary(rods, bound_array, mask, verbose=False):
+def syncBoundary(rods, bound_array, mask, boundary_assembly_rank, barrel_buf,verbose=False):
     assert isinstance(rods, list)
     assert isinstance(bound_array, dict)
     assert len(bound_array) <= 8 and len(bound_array) >= 1
     comm = MPI.COMM_WORLD
-    comm_rank = comm.Get_rank()
+    comm_rank = comm.Get_rank() 
     comm_size = comm.Get_size()
     diagnal_rank = filter(lambda (rank, arr): arr.shape[0] == 1, bound_array.items())
     diagnal_rank = map(lambda (r,arr) : r, diagnal_rank)
     comm.Barrier()
+    uti.mpi_print('%s', 'rod syncing', my_rank)
     #copy local temp to buffer
     for rod in rods:
         for direction, neighbourRod in rod.neighbour.items():
@@ -435,30 +420,50 @@ def syncBoundary(rods, bound_array, mask, verbose=False):
     for to_rank, bound in  bound_array.items():
         if to_rank >= comm_size: #to enforce partial calculation...
             continue
-        comm.Bsend(bound, dest = to_rank, tag = comm_rank) 
         if verbose:
-            print '%d ---> %d : %d' % (comm_rank, to_rank, len(bound))
+            uti.mpi_print('%d ---> %d : %d' , (comm_rank, to_rank, len(bound)), my_rank)
+        comm.Bsend(bound, dest = to_rank, tag = comm_rank) 
+    reqs = []
     for from_rank, bound in bound_array.items():
         if from_rank >= comm_size: #to enforce partial calculation...
             continue
-        comm.Recv(bound, source = from_rank, tag = from_rank)
+        req = comm.Irecv(bound, source = from_rank, tag = from_rank)
+        reqs.append(req)
         if verbose:
-            print '%d <--- %d : %d' % (comm_rank, from_rank, len(bound))
+            uti.mpi_print( '%d <--- %d : %d', (comm_rank, from_rank, len(bound)), my_rank)
+     # outside
+    if my_rank in boundary_assembly_rank:
+        send_buf = np.zeros(rods[0].nH)
+        send_count = 0
+        for rod in rods:
+            for dir, neighbour in rod.neighbour.items():
+                if neighbour is None and (dir == 'x+y' or dir == 'xy+'):
+                    send_count += 1
+                    send_buf += rod.getSurface() 
+        send_buf /= float(send_count)
+        comm.Bsend(send_buf, dest = my_size - 1, tag = my_rank)
+        req = comm.Irecv(barrel_buf, source = my_size - 1, tag = my_size - 1)
+        reqs.append(req)
+    MPI.Request.Waitall(reqs)
 
-def start(rods, bound_array, mask, timeLimit, dt):
+def start(rods, bound_array, mask, boundary_assembly_rank, timeLimit, dt):
     #type: (list, dict,float,float) -> None
     uti.root_print('%s', 'start simulation', my_rank)
     uti.root_print('%s', 'the first steady status', my_rank)
-    buff = np.zeros(9999 * len(bound_array.values()))
+    barrel_buf = None
+    if my_rank in boundary_assembly_rank:
+        barrel_buf = np.zeros(rods[0].nH);
+    buff = np.zeros(9999999  )
     MPI.Attach_buffer(buff)
-    comm.Barrier()
+    syncBoundary(rods, bound_array, mask, boundary_assembly_rank, barrel_buf, True)
+    
     Types.PressureVessle.timePush(0.0)
     nowWater, nowPower = Types.PressureVessle.now()
     for rod in rods:
         calc_rod_source(rod, nowPower)
         calc_rod_bound(rod, 373, nowWater)
     #for rod in tqdm(rods): #update T
-    for rod in rods: #update T
+    for rod in rods: #update T 
         if rod.type is Types.RodType.fuel:
             calc_fuel_temperature(rod,373,1.e30, False)
             #calc_fuel_temperature(rod, 373, 1.e1, nowWater, False)
@@ -470,7 +475,8 @@ def start(rods, bound_array, mask, timeLimit, dt):
     summarize(0.0, rods)
     step_counter = 0
     restart_time = load_restart_file(rods)
-    syncBoundary(rods, bound_array, mask)
+    #uti.mpi_print('%s',str(bound_array), my_rank)
+    syncBoundary(rods, bound_array, mask, boundary_assembly_rank, barrel_buf, True)
     if restart_time is not None:
         Types.PressureVessle.currentTime = restart_time
         uti.mpi_print('restarting from time %f, end time %f', (Types.PressureVessle.currentTime, timeLimit), my_rank)
@@ -487,12 +493,13 @@ def start(rods, bound_array, mask, timeLimit, dt):
         for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
                 calc_fuel_temperature(rod, 373, dt )   #a PETSc impementation
-                set_melt_for_fuel(rod)
+                #set_melt_for_fuel(rod)
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation
-                set_melt_for_black(rod)
+                #set_melt_for_black(rod)
+            set_melt(rod)
         if step_counter % 10 == 0:
-            syncBoundary(rods, bound_array, mask)
+            syncBoundary(rods, bound_array, mask, boundary_assembly_rank, barrel_buf)
         hot_rod = summarize(Types.PressureVessle.currentTime ,rods)
         if step_counter % 100 == 0:
             save_tec(rods)

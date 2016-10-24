@@ -84,7 +84,7 @@ def calc_fuel_temperature(rod,Tf,dt, wrapper,verbose=False): #currently  only 2
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        sys.stdout.write('rod %d, %d, %d, T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f\n' % (rod.address + rod.getSummary()))
+        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
     return rod.T[rod.nH/2, :]
 
 def solveByEmpirical(Tf, hConv, hGap, lamdaIn, lamdaOut, nRin, nR,rin, r, qsource ):

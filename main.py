@@ -6,6 +6,7 @@ import utility as uti
 import numpy as np
 import Sim as simulator
 import initializer as initor
+import barrel
 import sys
 import re
 import petsc4py
@@ -26,14 +27,12 @@ def build_rod_units(nr, nz, filename):
         newRod = Types.RodUnit(_id, nz, nr-10, nr,
                                (float(_list[0]), float(_list[1])),              # position
                                (int(_list[2]), int(_list[3]), int(_list[4])),   # hang lie zu
-                                0.00836/2, 0.0095/2,                            # radious
+                                Types.Constant.ROD_IN_RADIOU, Types.Constant.ROD_OUT_RADIOUS,     # radious
                                 5768                                            #material stuff: gap heat transfer
                                )
         _id  += 1
-        rods.append(newRod)
-
-
-    # config rod status
+        rods.append(newRod) 
+    # config rod status 
     grayAssemblyList = [4,20,31,33]
     blackAssemblyList = [2,5,9,11,13,16,18,22,25,27,29,35,40,42,45,47]
     center = [(9, 9)]
@@ -135,9 +134,7 @@ def build_rod_units(nr, nz, filename):
         rod.neighbour['x-y-'] = findRod((iRowCol[0] - 1, iRowCol[1] - 1, iRowCol[2]), rod.position)
         rod.neighbour['x-y'] = findRod((iRowCol[0] - 1, iRowCol[1], iRowCol[2]), rod.position)
         rod.neighbour['x-y+'] = findRod((iRowCol[0] - 1, iRowCol[1] + 1, iRowCol[2]), rod.position)
-
     return rods, rodMap
-
 
 def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     uti.mpi_print('%s', 'initialing heat rate ...', my_rank )
@@ -220,11 +217,13 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
 def clean_rod_units(rods,rodsMap):
     cleaned_rod = filter(lambda rod: rod.type is not Types.RodType.empty, rods)
     return cleaned_rod, None
+
 if __name__ == "__main__":
     nz = 100
     nr = 30
     coreHeight = 3.657
     mask = {}
+    '''
     for i in xrange(0,52):
         mask[i] = [i + 1]
 
@@ -237,32 +236,54 @@ if __name__ == "__main__":
         4 : [32, 33, 34, 35, 36, 37, 38], 
         5 : [39, 40,41 ,42 ,43, 44],
         6 : [45, 46, 47, 48, 49, 50,
-              51, 52,]
+              51, 52,],
+        7 : [],
     }
-    '''
+
+    boundary_assembly_rank = [8, 16, 24, 31, 38, 44, 48, 49, 50, 51, 52]
+    assembly_to_sync = set()
+    for k, v in mask.items():
+        for iass in v:
+            if iass in boundary_assembly_rank:
+                assembly_to_sync.add(k)
+    boundary_assembly_rank = list(assembly_to_sync)
+    uti.root_print('boundary assembly %s', str(boundary_assembly_rank), my_rank)
+
     #MPI things
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
+    size = comm.Get_size()
     #assert len(mask) ==  my_size
+    bound_array = None
+    rodUnits = None
     rodUnits, rodsMap = build_rod_units(nr, nz, 'rod_position.dat')
+    bar = None
     init_heat_generation_rate(rodUnits,rodsMap, nz, coreHeight,'heat_rate.dat')
     rodUnits, rodsMap = clean_rod_units(rodUnits,rodsMap)
     simulator.config_material(rodUnits)
-    initor.set_initial(rodUnits,0.0 ,10,373) #start time , delat T, Tfluid
-
+    initor.set_initial(rodUnits, 0.0 ,10,373) #start time , delat T, Tfluid
     rodUnits, bound_array = initor.set_mask(rank, rodUnits, mask)
     
-    fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
-    simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
+    if rank != size-1:
+        fuelTemplate, blackTemplate, rhs = initor.initPetscTemplate(rodUnits)
+        simulator.installPETScTemplate(fuelTemplate, blackTemplate, rhs)
+    else:
+        uti.mpi_print('%s', 'building barrel', rank)
+        rodUnits, rodsMap = None, None
+        bar = barrel.barrel_init(nz, 7, coreHeight, Types.Constant.BARREL_IN_RADIOUS, Types.Constant.BARREL_OUT_RADIOUS)
     #simulator.ready_to_solve(rodUnits)
     #start solve
-    comm.barrier()
+    comm.Barrier()
     try:
-    	simulator.start(rodUnits, bound_array, mask, 5000, 1)
+        if rank != size - 1:
+    	    simulator.start(rodUnits, bound_array, mask, boundary_assembly_rank, 5000, 1)
+        else:
+            barrel.barrel_start(bar, boundary_assembly_rank, 5000, 1)
     except Exception as e:
 	print e
 	import traceback
-    	traceback.print_exc()
+    	err = traceback.format_exc()
+        uti.mpi_print('%s', err, my_rank)
 	comm.Abort()	
     print 'done'
 

@@ -12,7 +12,7 @@ my_size = comm.Get_size()
 
 def set_initial(rods,tstart,deltaT,Tf):
     # type: (list,float,float, float) -> None
-    print 'allocate & initialing temperature field'
+    uti.root_print('%s', 'allocate & initialing temperature field', my_rank)
     assert isinstance(rods,list)
     Types.PressureVessle.currentTime = tstart
     Types.PressureVessle.timePush(0)
@@ -67,7 +67,7 @@ def get_rank(mask, iass):
 def set_mask(rank, rods, mask):
     #type: (int, list) -> None
     rodLocal = filter(lambda rod: rod.address[2] in mask.get(rank), rods)
-    print 'rank %d got %d rods' % (rank, len(rodLocal) )
+    uti.mpi_print('rank %d got %d rods' ,(rank, len(rodLocal) ), my_rank)
     bound_ids = {}
     for rod in rodLocal:
         for direct, neigh_rod in rod.neighbour.items():
@@ -85,7 +85,7 @@ def set_mask(rank, rods, mask):
                 else:
                     bound_ids[that_rank] += 1 
 
-    print 'rank %d connect to %s' % (rank, bound_ids.keys())
+    uti.mpi_print('rank %d connect to %s' ,(rank, bound_ids.keys()), my_rank)
     assert len(bound_ids) <= 8 and len(bound_ids) >= 0
     bound_array = {}
     for bid, width in bound_ids.items():
@@ -106,7 +106,7 @@ def set_mask(rank, rods, mask):
         ids = sorted(ids, key = lambda v:v[0]) 
         ids = map(lambda v: v[1], ids)
         #ids = reduce(lambda x,y : x if y in x else x + [y], [[],] + ids) #delete duplicate
-        print 'interface %d -> %d : width %d' % (rank, bid, len(ids))
+        uti.mpi_print('interface %d -> %d : width %d' ,(rank, bid, len(ids)), my_rank)
         interface_buffer = np.zeros((len(ids), rods[0].nH))
         interface_map = {}
         for i, rod_id in enumerate(ids):
@@ -146,6 +146,4 @@ def initPetscTemplate(rods):
         blacktemp.fillTemplateBlack(blackRodSample.material.lamdaIn,blackRodSample.radious,blackRodSample.height[1]-blackRodSample.height[0], blackRodSample.rgrid)
 
     return fueltemp, blacktemp, PETSc.Vec().createSeq(fuleRodSample.nH*fuleRodSample.nR)
-
-
 

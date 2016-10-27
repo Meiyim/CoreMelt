@@ -24,9 +24,9 @@ def installPETScTemplate(fuel,black,b):
     petsc_rhs      = b
     petsc_ksp = PETSc.KSP().create()
     petsc_ksp.setType(PETSc.KSP.Type.CG)
-    pc = petsc_ksp.getPC()
-    pc.setType(PETSc.PC.Type.ILU)
-    petsc_ksp.setPC(pc)
+    #pc = petsc_ksp.getPC()
+    #pc.setType(PETSc.PC.Type.ILU)
+    #petsc_ksp.setPC(pc)
 
 def config_material(rods):
     #type(Types.RodUnits) -> ddNone
@@ -42,7 +42,7 @@ def config_material(rods):
             5.3*mixratio1+25*mixratio2,  2.09,
             8740*mixratio1+7020*mixratio2, 5990,
             535*mixratio1+835*mixratio2, 645,
-            3113*mixratio1+1600*mixratio2,2911)
+            3113*mixratio1+2911*mixratio2,2911)
         else:
             assert False
 
@@ -64,7 +64,7 @@ def calSteamGr(dT,L):
     g = 9.8
     niu = 12.37e-6
     rou = 0.598
-    if dT < 1.e-10 or L < 1.e-10:
+    if dT < 1.e-10 or L > 1.e-10:
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
     return g*beta*dT*(L**3) /((niu/rou)**2) 
 
@@ -80,8 +80,8 @@ def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    #return  0.05  * Nu * lamda / L
-    return   Nu * lamda / L
+    return  0.05  * Nu * lamda / L
+    #return   Nu * lamda / L
 
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     mul = Gr*Prf
@@ -95,8 +95,8 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    #return  0.05  * Nu * lamda / L
-    return  Nu * lamda  / L
+    return  0.05  * Nu * lamda / L
+    #return  Nu * lamda  / L
 
 def save_tec_2d(rod, now):
     open('tec/rod_%s_at%ds.dat' % (str(rod.address), int(now)), 'w').write(rod.get2DTec() )
@@ -166,12 +166,12 @@ def calc_rod_bound(rod,Tf,nowWater):
         if L < nowWater:#fluid
             h = calcBoilHeatTransferRate(calGr(deltaT[ih], L + 1.0), 1.75, 1.75, L + 1.0 ) #assuming deltaT == 10
             #rod.qbound[ih] += h * area * (0. - deltaT[ih])
-            rod.heatCoef[ih] += h
+            #rod.heatCoef[ih] += h
         else: #gas
             h = calcSteamHeatTransferRate(calSteamGr(deltaT[ih], L - nowWater + 1.0), 1.003, 1.003, L - nowWater + 1.0)
             #rod.qbound[ih] += h * area * (0. - deltaT[ih])
-            rod.heatCoef[ih] += h 
-        #qConvection = h * (deltaT[ih])
+            #rod.heatCoef[ih] += h 
+        qConvection = h * (deltaT[ih])
         qRadiation = 0.0
         #convection to neighbour
         #radiation
@@ -185,7 +185,7 @@ def calc_rod_bound(rod,Tf,nowWater):
                           Types.Constant.SIGMA * \
                           Types.Constant.EPSILONG * \
                           Types.Constant.RADIO_ANGLE_AMPLIFIER
-        rod.qbound[ih] += qRadiation
+        rod.qbound[ih] += qRadiation + qConvection
         #uti.mpi_print('qbound %d %e', (ih, rod.qbound[ih]), my_rank)
         #assert isinstance(rod.qbound[ih], float)
         #assert isinstance(rod.heatCoef[ih], float)
@@ -465,11 +465,11 @@ def start(rods, bound_array, mask, boundary_assembly_rank, timeLimit, dt):
     #for rod in tqdm(rods): #update T
     for rod in rods: #update T 
         if rod.type is Types.RodType.fuel:
-            calc_fuel_temperature(rod,373,1.e30, False)
-            #calc_fuel_temperature(rod, 373, 1.e1, nowWater, False)
+            #calc_fuel_temperature(rod,373,1.e30, False)
+            calc_fuel_temperature(rod, 373, 1.e1, False)
         else:
-            calc_other_temperature(rod,373,1.e30, False)
-            #calc_other_temperature(rod, 373, 1.e1, nowWater ,False)
+            #calc_other_temperature(rod,373,1.e30, False)
+            calc_other_temperature(rod, 373, 1.e1, False)
     uti.root_print('%s', 'finish calculating steady status', my_rank)
     #begin time iteration
     summarize(0.0, rods)
@@ -499,8 +499,8 @@ def start(rods, bound_array, mask, boundary_assembly_rank, timeLimit, dt):
                 #set_melt_for_black(rod)
             set_melt(rod)
         if step_counter % 10 == 0:
+            hot_rod = summarize(Types.PressureVessle.currentTime ,rods)
             syncBoundary(rods, bound_array, mask, boundary_assembly_rank, barrel_buf)
-        hot_rod = summarize(Types.PressureVessle.currentTime ,rods)
         if step_counter % 100 == 0:
             save_tec(rods)
             save_tec_2d(hot_rod, Types.PressureVessle.currentTime)

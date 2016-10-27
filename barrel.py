@@ -13,9 +13,9 @@ rhs_template = None
 
 petsc_ksp = PETSc.KSP().create()
 petsc_ksp.setType(PETSc.KSP.Type.CG)
-pc = petsc_ksp.getPC()
-pc.setType(PETSc.PC.Type.ILU)
-petsc_ksp.setPC(pc)
+#pc = petsc_ksp.getPC()
+#pc.setType(PETSc.PC.Type.ILU)
+#petsc_ksp.setPC(pc)
 
 comm = MPI.COMM_WORLD
 my_rank = comm.Get_rank()
@@ -206,8 +206,8 @@ def barrel_start(bar, boundary_assembly_rank, timeLimit, dt):
         calc_barrel_temperature(bar, Types.Constant.FLUID_TEMP, 1.0)
         Sim.set_melt(bar)
 
-        summaraize_barrel(Types.PressureVessle.currentTime, bar)
         if step_counter % 10 == 0:
+            summaraize_barrel(Types.PressureVessle.currentTime, bar)
             syncBarrel(bar, boundary_assembly_rank, core_temp)
         if step_counter % 100 == 0:
             Sim.save_tec([bar])

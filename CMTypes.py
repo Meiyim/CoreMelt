@@ -231,7 +231,7 @@ class RodUnit(object):
        self.T[:,-1].max(),\
        self.T[:,0].max(), \
        self.qbound.mean(), \
-       self.qsource.mean()*math.pi*(self.radious**2), \
+       self.qsource.mean() * math.pi * (self.radious ** 2) * (self.height[-1] - self.height[0]), \
        self.heatCoef.mean(), \
        self.melted.melt_mass 
 

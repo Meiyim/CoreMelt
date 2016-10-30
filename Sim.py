@@ -64,7 +64,7 @@ def calSteamGr(dT,L):
     g = 9.8
     niu = 12.37e-6
     rou = 0.598
-    if dT < 1.e-10 or L > 1.e-10:
+    if dT < 1.e-10 or L < 1.e-10:
         print 'Gr is zero or negative: dt: %f, L: %f' %(dT,L)
     return g*beta*dT*(L**3) /((niu/rou)**2) 
 
@@ -80,7 +80,7 @@ def calcSteamHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    return  0.05  * Nu * lamda / L
+    return  0.2  * Nu * lamda / L
     #return   Nu * lamda / L
 
 def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
@@ -95,8 +95,8 @@ def calcBoilHeatTransferRate(Gr,Prf,Prw,L):
     if mul >=1e10:
         Nu = 0.15 * (mul)**0.333 * (Prf/Prw) ** (0.25)
     #return 500.0
-    return  0.05  * Nu * lamda / L
-    #return  Nu * lamda  / L
+    #return  0.1  * Nu * lamda / L
+    return  Nu * lamda  / L
 
 def save_tec_2d(rod, now):
     open('tec/rod_%s_at%ds.dat' % (str(rod.address), int(now)), 'w').write(rod.get2DTec() )
@@ -299,7 +299,7 @@ def calc_fuel_temperature(rod,Tf,dt, verbose=False): #currently  only 2
         i = row % rod.nR
         rod.T[j,i] = val
     if verbose:
-        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
+        uti.mpi_print('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n', (rod.address + rod.getSummary()), my_rank)
    
 def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
     #type: (Types.RodUnit) -> None
@@ -329,7 +329,7 @@ def calc_other_temperature(rod, Tf, dt, verbose=False): #currently  only 2
         rod.T[j,i] = val
 
     if verbose :
-        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qline % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
+        sys.stdout.write('rod [%d %d %d] T center %f, fuelOut %f, cladOut %f, qbound:  %f, qRodSource % f, headCoef %f, mass %f\n' % (rod.address + rod.getSummary()))
 
 def set_melt(rod): # find the melte part ...
     #type (Types.RodUnit) -> None
@@ -348,7 +348,7 @@ def set_melt(rod): # find the melte part ...
                 rod.T[j, i] = 0.0
                 rod.melted.status.append((j,i))
 
-def calc_rod_source(rod,nowPower):
+def calc_rod_source(rod, nowPower):
     #type (Types.RodUnit,float)->(None)
     h = (rod.height[1]-rod.height[0])
     volumn = math.pi * rod.inRadious**2 * h
@@ -492,7 +492,7 @@ def start(rods, bound_array, mask, boundary_assembly_rank, timeLimit, dt):
         #for rod in tqdm(rods): #update T
         for rod in rods: #update T
             if rod.type is Types.RodType.fuel:
-                calc_fuel_temperature(rod, 373, dt )   #a PETSc impementation
+                calc_fuel_temperature(rod, 373, dt)   #a PETSc impementation
                 #set_melt_for_fuel(rod)
             else:
                 calc_other_temperature(rod, 373, dt)  #a PETSc impementation

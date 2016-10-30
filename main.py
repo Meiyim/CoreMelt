@@ -152,10 +152,16 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     assert len(distribution) == 52
     distribution = np.array(distribution)
     distribution /= distribution.sum()
-    distribution /= 4 # quarter core considered
+    num_rod = {}
+    for add, rod in rodsMap.items():
+        iAss = add[2]
+        if num_rod.get(iAss) is None:
+            num_rod[iAss] = 1
+        else:
+            num_rod[iAss] += 1
     for add,rod in rodsMap.items():
         iAss = add[2]
-        rod.radialPowerFactor = distribution[iAss-1] / (17*17) #per rod
+        rod.radialPowerFactor = distribution[iAss-1] / num_rod[iAss] #per rod
     # axial distribution
     height = []
     distribution = []
@@ -197,7 +203,7 @@ def init_heat_generation_rate(rods,rodsMap, nz, coreHeight, filename):
     for line in f:
         _list = pattern.findall(line)
         time.append(float(_list[0]))
-        power.append(float(_list[1])* 3.150e9) # decay heat power: 3150e6
+        power.append(float(_list[1])* 3.150e9 ) # decay heat power: 3150e6
     Types.PressureVessle.powerHistory = np.array((time, power))
     del time
     del power

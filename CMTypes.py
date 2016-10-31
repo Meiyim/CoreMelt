@@ -24,8 +24,8 @@ class PressureVessle(object):
 
 class RodType:
     fuel = 1
-    gray = 2
-    black = 3
+    ag_ln_cd= 2
+    stainless_steal = 3
     empty = 4
 
 class MeltStatus:

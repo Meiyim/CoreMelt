@@ -36,9 +36,12 @@ def build_rod_units(nr, nz, filename):
     grayAssemblyList = [4,20,31,33]
     blackAssemblyList = [2,5,9,11,13,16,18,22,25,27,29,35,40,42,45,47]
     center = [(9, 9)]
-    specialPosi = [(3, 6), (3, 9),(3,12),(4,4),(4,14),(6,3),(6,6),(6,9),
-                   (6,12),(6,15),(9,3),(9,6),(9,12),(9,15),
-                   (12,3),(12,6),(12,9),(12,12),(12,15),
+    inner_specialposi = [(6,6), (6,9), (6,12), 
+                         (9,6), (9,9), (9,12),
+                         (12,6), (12,9), (12,12) ]
+    outer_specialposi = [(3, 6), (3, 9),(3,12),(4,4),(4,14),(6,3),
+                   (6,15),(9,3),(9,15),
+                   (12,3),(12,15),
                    (14,4),(14,14),(15,6),(15,9),(15,12),
                    ]
     for rod in rods:
@@ -47,21 +50,23 @@ def build_rod_units(nr, nz, filename):
         if iAss in grayAssemblyList:
             if iRowCol in center:
                 rod.type = Types.RodType.empty
-            elif iRowCol in specialPosi:
-                rod.type = Types.RodType.gray
+            elif iRowCol in outer_specialposi:
+                rod.type = Types.RodType.stainless_steal
+            elif iRowCol in inner_specialposi:
+                rod.type = Types.RodType.ag_ln_cd
             else:
                 rod.type = Types.RodType.fuel
         elif iAss in blackAssemblyList:
             if iRowCol in center:
                 rod.type = Types.RodType.empty
-            elif iRowCol in specialPosi:
-                rod.type = Types.RodType.black
+            elif iRowCol in outer_specialposi or iRowCol in inner_specialposi:
+                rod.type = Types.RodType.ag_ln_cd
             else:
                 rod.type = Types.RodType.fuel
         else:
             if iRowCol in center:
                 rod.type = Types.RodType.empty
-            elif iRowCol in specialPosi:
+            elif iRowCol in outer_specialposi or iRowCol in inner_specialposi:
                 rod.type = Types.RodType.empty
             else:
                 rod.type = Types.RodType.fuel

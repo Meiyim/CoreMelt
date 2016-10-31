@@ -9,7 +9,6 @@ comm = MPI.COMM_WORLD
 my_rank = comm.Get_rank()
 my_size = comm.Get_size()
 
-
 def set_initial(rods,tstart,deltaT,Tf):
     # type: (list,float,float, float) -> None
     uti.root_print('%s', 'allocate & initialing temperature field', my_rank)

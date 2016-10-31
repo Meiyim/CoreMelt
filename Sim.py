@@ -32,8 +32,11 @@ def config_material(rods):
     #type(Types.RodUnits) -> ddNone
     uti.mpi_print('%s', 'configuring material', my_rank)
     for rod in rods:
-        if rod.type is Types.RodType.black or rod.type is Types.RodType.gray:
-            rod.material = Types.MaterialProterty('gray/black',25,25,7020,7020,835,835,1600,1600)
+        if rod.type is Types.RodType.stainless_steal:
+            rod.material = Types.MaterialProterty('ss',25,25,7020,7020,835,835,1600,1600)
+            rod.radialPowerFactor = 0.0 #black & gray rod cannot generate heat...
+        elif rod.type is Types.RodType.ag_ln_cd:
+            rod.material = Types.MaterialProterty('ag_ln_cd',25,25,7020,7020,835,835,1600,1073)
             rod.radialPowerFactor = 0.0 #black & gray rod cannot generate heat...
         elif rod.type is Types.RodType.fuel:
             mixratio1 = 92.35 /(92.35 + 2.606)
@@ -339,14 +342,16 @@ def set_melt(rod): # find the melte part ...
         for i in xrange(0,rod.nR):
             if (j,i) in rod.melted.status:
                 continue
-            if i < rod.nRin and rod.T[j,i] > FUEL_CRITICAL:  #fuel cell part
-                rod.melted.melt_mass += rod.get_volumn(j, i) * rod.material.rouIn
-                rod.T[j, i] = 0.0
-                rod.melted.status.append((j,i))
-            elif i >= rod.nRin and rod.T[j,i] > CLAD_CRITICAL: # clad
-                rod.melted.melt_mass += rod.get_volumn(j, i) * rod.material.rouOut
-                rod.T[j, i] = 0.0
-                rod.melted.status.append((j,i))
+            if len( filter(lambda temp: temp > FUEL_CRITICAL, rod.T[j,:rod.nRin])) > (rod.nRin / 2) :
+                for i in xrange(0, rod.nRin):
+                    rod.melted.melt_mass += rod.get_volumn(j, i) * rod.material.rouIn
+                    rod.T[j, i] = 0.0
+                    rod.melted.status.append((j,i))
+            if len( filter(lambda temp: temp > CLAD_CRITICAL, rod.T[j,rod.nRin:-1])) > ((rod.nR - rod.nRin) / 2) :
+                for i in xrange(rod.nRin, rod.nR):
+                    rod.melted.melt_mass += rod.get_volumn(j, i) * rod.material.rouOut
+                    rod.T[j, i] = 0.0
+                    rod.melted.status.append((j,i))
 
 def calc_rod_source(rod, nowPower):
     #type (Types.RodUnit,float)->(None)

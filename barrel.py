@@ -184,7 +184,7 @@ def barrel_start(bar, boundary_assembly_rank, timeLimit, dt):
     Types.PressureVessle.timePush(0.0)
     nowWater, nowPower = Types.PressureVessle.now()
     calc_barrel_bound(bar, 373, nowWater, core_temp)
-    calc_barrel_temperature(bar, Types.Constant.FLUID_TEMP, 10.0)
+    calc_barrel_temperature(bar, Types.Constant.FLUID_TEMP, 5.0)
     uti.mpi_print('%s', 'finish calculationg barrel', my_rank)
 
     step_counter = 0

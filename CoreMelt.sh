@@ -1,2 +1,4 @@
 #!/bin/sh
-mpirun -np $1 python main.py
+rm ./tec/*
+mpirun -np 8 python main.py
+

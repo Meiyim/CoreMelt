@@ -288,9 +288,9 @@ if __name__ == "__main__":
     comm.Barrier()
     try:
         if rank != size - 1:
-    	    simulator.start(rodUnits, bound_array, mask, boundary_assembly_rank, 5000, 1)
+    	    simulator.start(rodUnits, bound_array, mask, boundary_assembly_rank, 5000, 1.0)
         else:
-            barrel.barrel_start(bar, boundary_assembly_rank, 5000, 1)
+            barrel.barrel_start(bar, boundary_assembly_rank, 5000, 1.0)
     except Exception as e:
 	print e
 	import traceback
